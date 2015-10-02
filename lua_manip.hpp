@@ -1,6 +1,5 @@
 #ifndef LUA_MANIP_HPP
 #define LUA_MANIP_HPP
-#include <iostream>
 #include <lua.hpp>
 #include <lauxlib.h>
 
@@ -15,12 +14,11 @@ inline int LuaExtract<int>(lua_State* L, int& firstParamIndex)
 {
         //TDOD: Error Handling
         int result = lua_tointeger(L, firstParamIndex--);
-        //std::cout << "Got: " << result << " at stack index: " << argCount-- << std::endl;
         return result;
 }
 
 template <typename T>
-inline int LuaReturn(lua_State* L, const T&& t);
+inline T LuaReturn(lua_State* L, const T&& t);
 
 template <>
 inline int LuaReturn(lua_State* L, const int&& i)

@@ -10,36 +10,36 @@
 namespace luaglue
 {
 
-template <typename _Class, typename ..._Args>
+template <typename Class_, typename ...Args_>
 struct DefaultClassFactory
 {
-        static _Class* Create(_Args... args)
+        static Class_* Create(Args_... args)
         {
-                return new _Class(args...);
+                return new Class_(args...);
         }
 
-        static void Destroy(_Class* obj)
+        static void Destroy(Class_* obj)
         {
                 delete obj;
                 obj = nullptr;
         }
 };
 
-template <typename _Class, typename _ClassFactory, typename ..._Args>
+template <typename Class_, typename ClassFactory_, typename ...Args_>
 class LuaClass
 {
-        enum { NUM_ARGS = std::tuple_size<std::tuple<_Args...>>::value };
+        enum { NUM_ARGS = std::tuple_size<std::tuple<Args_...>>::value };
         typedef bool(*RegisterFunc)(lua_State*, char const* className, char const* methodName);
 public:
         LuaClass(char const* className)
                 : className_(className)
         {}
 
-        template<typename _Result, typename ..._MethodArgs>
-        luaglue::LuaMethodRegistrar<_Result, _Class, _MethodArgs...> GetMethodRegistrar(_Result (_Class::*Func)(_MethodArgs...))
+        template<typename Result_, typename ...MethodArgs_>
+        luaglue::LuaMethodRegistrar<Result_, Class_, MethodArgs_...> GetMethodRegistrar(Result_ (Class_::*Func)(MethodArgs_...))
         {
                 (void)Func; // unused parameter used for type deduction.
-                return luaglue::LuaMethodRegistrar<_Result, _Class, _MethodArgs...>();
+                return luaglue::LuaMethodRegistrar<Result_, Class_, MethodArgs_...>();
         }
 
         void AddRegisterFunc(char const* methodName, RegisterFunc func)
@@ -81,7 +81,7 @@ private:
                 lua_getfield(L, 1, "return_table");
 
                 int firstParam = lua_gettop(L)-1;
-                lua_pushlightuserdata(L, _ClassFactory::Create(LuaExtract<_Args>(L, firstParam)...));
+                lua_pushlightuserdata(L, ClassFactory_::Create(LuaExtract<Args_>(L, firstParam)...));
                 lua_setfield(L, -2, "instance");
                 return 1;
         }
@@ -95,9 +95,9 @@ private:
                 }
 
                 lua_getfield(L, -1, "instance");
-                _Class* obj = (_Class*)lua_touserdata(L, -1);
+                Class_* obj = (Class_*)lua_touserdata(L, -1);
                 assert(obj);
-                _ClassFactory::Destroy(obj);
+                ClassFactory_::Destroy(obj);
                 return 0;
         }
 
