@@ -46,8 +46,8 @@ struct StackManager<int>
     }
 };
 
-} // end namespace impl
+} // end impl
 
-} // end namespace luaglue
+} // end luaglue
 
 #endif // LUA_MANIP_HPP
