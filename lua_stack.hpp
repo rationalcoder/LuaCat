@@ -23,9 +23,10 @@ struct StackManager
     template <typename Any_>
     struct False { enum { RESULT = false }; };
 
-    static void Push(lua_State* L, T_ val) { static_assert(False<T_>::RESULT,
-                                             "No Lua StackManager defined for one or more of your types. See the README for more info."); }
+    static_assert(False<T_>::RESULT, "No Lua StackManager defined for one or more of your types. See the README for more info.");
+
     // Divert the error for Pop to link-time, so the static assert above will be the only one reported.
+    static void Push(lua_State* L, T_ val);
     static T_ Pop(lua_State* L, int* firstParamIndex);
 };
 
@@ -41,7 +42,7 @@ struct StackManager<int>
     static int Pop(lua_State* L, int* firstParamIndex)
     {
         //TDOD: Error Handling
-        int result = lua_tointeger(L, *firstParamIndex--);
+        int result = lua_tointeger(L, (*firstParamIndex)--);
         return result;
     }
 };

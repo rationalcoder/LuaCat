@@ -6,7 +6,7 @@
 #include <type_traits>
 #include <tuple>
 #include <functional>
-#include "lua_manip.hpp"
+#include "lua_stack.hpp"
 
 #include <iostream>
 
