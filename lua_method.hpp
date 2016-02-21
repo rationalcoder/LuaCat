@@ -3,14 +3,14 @@
 #include <cassert>
 #include <lua5.2/lua.hpp>
 #include <lua5.2/lauxlib.h>
-#include <type_traits>
 #include <tuple>
-#include <functional>
 #include "lua_stack.hpp"
 
-#include <iostream>
+/**
+ * @file lua_method.hpp
+ * @brief Handles method wrapper generation.
+ */
 
-#define REM_UNUSED_WARNING(i) ++i; --i // temporary replacement for extra template specializations to remove unused variable warnings.
 
 namespace luaglue
 {
@@ -41,7 +41,7 @@ struct LuaBaseCallWrapper
     }
 };
 
-template <typename Result_, typename Class_, typename ...Args_>
+template <typename Result_, typename Class_, bool HasArgs_, typename ...Args_>
 struct LuaCallWrapper
 {
     using Base = LuaBaseCallWrapper<Result_, Class_, Args_...>;
@@ -50,14 +50,26 @@ struct LuaCallWrapper
     static int Call(lua_State* L)
     {
         Class_* obj = Base::CommonWork(L);
-
-        int i = lua_gettop(L); REM_UNUSED_WARNING(i); // looping variable that represents the stack index to extract a parameter from.
+        int i = lua_gettop(L); // looping variable that represents the stack index to extract a parameter from.
         return StackManager<Result_>::Push(L, Base::template MethodWrapper<Func_>(obj, StackManager<Args_>::Pop(L, &i)...));
     }
 };
 
+template <typename Result_, typename Class_, typename ...Args_>
+struct LuaCallWrapper <Result_, Class_, false, Args_...>
+{
+    using Base = LuaBaseCallWrapper<Result_, Class_, Args_...>;
+
+    template <typename Base::Func Func_>
+    static int Call(lua_State* L)
+    {
+        Class_* obj = Base::CommonWork(L);
+        return StackManager<Result_>::Push(L, Base::template MethodWrapper<Func_>(obj));
+    }
+};
+
 template <typename Class_, typename ...Args_>
-struct LuaCallWrapper<void, Class_, Args_...>
+struct LuaCallWrapper<void, Class_, true, Args_...>
 {
     using Base = LuaBaseCallWrapper<void, Class_, Args_...>;
 
@@ -65,9 +77,23 @@ struct LuaCallWrapper<void, Class_, Args_...>
     static int Call(lua_State* L)
     {
         Class_* obj = Base::CommonWork(L);
-
-        int i = lua_gettop(L); REM_UNUSED_WARNING(i); // looping variable that represents the stack index to extract a parameter from.
+        int i = lua_gettop(L); // looping variable that represents the stack index to extract a parameter from.
         Base::template MethodWrapper<Func_>(obj, StackManager<Args_>::Pop(L, &i)...);
+        return 0;
+    }
+};
+
+template <typename Class_, typename ...Args_>
+struct LuaCallWrapper<void, Class_, false, Args_...>
+{
+    using Base = LuaBaseCallWrapper<void, Class_, Args_...>;
+
+    template <typename Base::Func Func_>
+    static int Call(lua_State* L)
+    {
+        (void)L;
+        Class_* obj = Base::CommonWork(L);
+        Base::template MethodWrapper<Func_>(obj);
         return 0;
     }
 };
@@ -78,6 +104,7 @@ template <typename Result_, class Class_, typename ...Args_>
 struct LuaMethod
 {
     typedef Result_ (Class_::*Func)(Args_...);
+    static constexpr bool HAS_ARGS = std::tuple_size<std::tuple<Args_...>>::value;
 
     template <Func Func_>
     static bool Register(lua_State* L, char const* className, char const* methodName)
@@ -87,7 +114,7 @@ struct LuaMethod
 
         lua_getglobal(L, className);
         lua_getfield(L, -1, "return_table");
-        lua_pushcclosure(L, LuaCallWrapper<Result_, Class_, Args_...>::template Call<Func_>, 0);
+        lua_pushcclosure(L, LuaCallWrapper<Result_, Class_, HAS_ARGS, Args_...>::template Call<Func_>, 0);
         lua_setfield(L, -2, methodName);
 
         lua_pop(L, lua_gettop(L));
@@ -96,7 +123,5 @@ struct LuaMethod
 };
 
 } // luaglue
-
-#undef REM_UNUSED_WARNING
 
 #endif // LUA_METHOD_HPP
