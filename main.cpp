@@ -1,11 +1,4 @@
 #include <iostream>
-#include <list>
-#include <assert.h>
-#include <vector>
-#include <type_traits>
-#include <typeinfo>
-#include <ctime>
-#include <tuple>
 #include "lua_class.hpp"
 
 using namespace std;
@@ -51,9 +44,16 @@ public:
         cout << "Hello from Foo!!" << endl;
     }
 
-    void DoStuff(int one, int two)
+    void DoStuff(int one, int two, double three, float four, bool cond, uint64_t i)
     {
-        cout << one << " " << two << endl;
+        boolalpha(cout);
+        cout << one << " " << two << " " << three << " " << four;
+        cout << " " << cond << " " << i << endl;
+    }
+
+    void Procedure()
+    {
+        cout << "Procedure called in Foo" << endl;
     }
 
 private:
@@ -65,20 +65,21 @@ int main()
 {
     lua_State* L = luaL_newstate();
     luaL_openlibs(L);
-
     luaglue::LuaClass<Foo, Foo::Factory, int, int> foo("Foo");
 
     LG_ADD_METHOD(foo, "GetI1", &Foo::GetI1);
     LG_ADD_METHOD(foo, "GetI2", &Foo::GetI2);
     LG_ADD_METHOD(foo, "SayHello", &Foo::SayHello);
     LG_ADD_METHOD(foo, "DoStuff", &Foo::DoStuff);
+    LG_ADD_METHOD(foo, "Procedure", &Foo::Procedure);
 
     foo.Register(L);
 
     luaL_dostring(L, " foo = Foo:aquire(1, 2)\n"
                      " print(\"One: \"..foo:GetI1() .. \" Two: \" ..foo:GetI2())\n"
                      " foo:SayHello()\n"
-                     " foo:DoStuff(1, 2)\n"
+                     " foo:DoStuff(1, 2, 3.1, 4.2, true, 5)\n"
+                     " foo:Procedure()\n"
                      " Foo.release(foo)");
     return EXIT_SUCCESS;
 }
