@@ -1,49 +1,49 @@
-#ifndef LUA_CLASS_HPP
-#define LUA_CLASS_HPP
+#ifndef LG_CLASS_HPP
+#define LG_CLASS_HPP
 #include <vector>
 #include <tuple>
 #include <functional>
-#include "lua_method.hpp"
+#include "lg_common.hpp"
+#include "lg_method.hpp"
 
-namespace luaglue
+#define LG_MEMFUN(ptr) luaglue::MakeMethod(ptr).MakeRegistrar<ptr>()
+#define LG_ADD_METHOD(obj, name, ptr) obj.AddMethod(name, LG_MEMFUN(ptr))
+
+namespace luaglue 
 {
 
 template <typename Class_, typename ...Args_>
-struct DefaultClassFactory
+struct DefaultClassFactory 
 {
-    static Class_* Create(Args_... args)
+    static Class_* Create(Args_... args) 
     {
         return new Class_(args...);
     }
 
-    static void Destroy(Class_* obj)
+    static void Destroy(Class_* obj) 
     {
         delete obj;
-        obj = nullptr;
     }
 };
 
 template <typename Class_, typename ClassFactory_, typename ...Args_>
-class LuaClass
+class LuaClass 
 {
-    typedef bool(*MethodRegistrar)(lua_State*, char const* className, char const* methodName);
-    enum { NUM_ARGS = std::tuple_size<std::tuple<Args_...>>::value };
-
 public:
     LuaClass(char const* className)
         : className_(className)
     {}
 
-    void AddMethod(char const* methodName, MethodRegistrar func)
+    void AddMethod(char const* methodName, impl::MethodRegistrar func)
     {
         namedRegistrars_.emplace_back(std::make_tuple(methodName, func));
     }
 
-    void Register(lua_State* L)
+    void Register(lua_State* L) 
     {
         luaL_Reg lib[] = // main creation and destruction functions
         {
-            { "aquire", LuaCreationWrapper },
+            { "aquire", MakeCreationWrapper(typename impl::BuildIndexSequence<sizeof ...(Args_)>::Type()) },
             { "release", LuaDestructionWrapper },
             { NULL, NULL}
         };
@@ -56,36 +56,34 @@ public:
 
         // call all of the register functions passing in the lua state.
         for(auto iter = namedRegistrars_.begin(); iter != namedRegistrars_.end(); ++iter)
-        {
             std::get<1>(*iter)(L, className_, std::get<0>((*iter)));
-        }
     }
 
 private:
-    static int LuaCreationWrapper(lua_State* L)
+    template <std::size_t ...Indices_>
+    static constexpr lua_CFunction MakeCreationWrapper(impl::IndexSequence<Indices_...>) { return LuaCreationWrapper<Indices_...>; }
+
+private:
+    template <std::size_t ...Indices_>
+    static int LuaCreationWrapper(lua_State* L) 
     {
         using namespace impl;
 
-        if(!lua_istable(L, 1))
+        if(!lua_istable(L, 1)) 
         {
-            luaL_error(L, "expected class table as first parameter; did you forget the ':' in ClassName:func() ?");
-            return 0;
+            lua_pushnil(L);
+            return 1;
         }
         lua_getfield(L, 1, "return_table");
 
-        int firstParam = lua_gettop(L)-1;
-        lua_pushlightuserdata(L, ClassFactory_::Create(StackManager<Args_>::Pop(L, &firstParam)...));
+        lua_pushlightuserdata(L, ClassFactory_::Create(StackManager<Args_>::template At<Indices_ + 1>(L)...));
         lua_setfield(L, -2, "instance");
         return 1;
     }
 
     static int LuaDestructionWrapper(lua_State* L)
     {
-        if(!lua_istable(L, -1))
-        {
-            luaL_error(L, "expected class table as first parameter; did you forget the ':' in ClassName:func() ?");
-            return 0;
-        }
+        if(!lua_istable(L, -1)) return 0;
 
         lua_getfield(L, -1, "instance");
         Class_* obj = (Class_*)lua_touserdata(L, -1);
@@ -95,21 +93,16 @@ private:
     }
 
 private:
-    std::vector<std::tuple<char const*, MethodRegistrar>> namedRegistrars_;
+    std::vector<std::tuple<char const*, impl::MethodRegistrar>> namedRegistrars_;
     char const* className_;
 };
 
 template<typename Result_, typename Class_, typename ...MethodArgs_>
-LuaMethod<Result_, Class_, MethodArgs_...> MakeMethod(Result_ (Class_::*Func)(MethodArgs_...))
+LuaMethod<Result_, Class_, MethodArgs_...> MakeMethod(Result_ (Class_::*)(MethodArgs_...))
 {
-    (void)Func; // unused parameter used for type deduction.
     return LuaMethod<Result_, Class_, MethodArgs_...>();
 }
 
 } // luaglue
 
-// temporary working AddMethod implemetation.
-#define LG_MEMFUN(ptr) &(luaglue::MakeMethod(ptr).Register<ptr>)
-#define LG_ADD_METHOD(obj, name, ptr) obj.AddMethod(name, LG_MEMFUN(ptr))
-
-#endif // LUA_CLASS_HPP
+#endif // LG_CLASS_HPP

@@ -1,5 +1,5 @@
 #include <iostream>
-#include "lua_class.hpp"
+#include "lg_class.hpp"
 
 using namespace std;
 
@@ -19,7 +19,6 @@ struct Factory
     {
         cout << "Destroying Foo" << endl;
         delete f;
-        f = nullptr;
     }
 };
 
@@ -81,5 +80,7 @@ int main()
                      " foo:DoStuff(1, 2, 3.1, 4.2, true, 5)\n"
                      " foo:Procedure()\n"
                      " Foo.release(foo)");
+
+
     return EXIT_SUCCESS;
 }
