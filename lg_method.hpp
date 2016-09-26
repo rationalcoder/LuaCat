@@ -2,6 +2,7 @@
 #define LG_METHOD_HPP
 #include <cassert>
 #include "lg_common.hpp"
+#include "lg_input.hpp"
 #include "lg_stack.hpp"
 
 /**
@@ -13,21 +14,20 @@
 namespace luaglue
 {
 
-namespace impl
+namespace detail
 {
 
 template <typename Result_, typename Class_, typename ...Args_>
-struct LuaBaseCallWrapper
+struct LuaBaseCallWrapper final
 {
     typedef Result_ (Class_::*Func)(Args_...);
 
     static Class_* GrabInstance(lua_State* L)
     {
         // TODO: Error Checking...
-        lua_getfield(L, 1, "instance");
+        lua_getfield(L, 1, "_instance");
         Class_* obj = (Class_*)lua_touserdata(L, -1);
         assert(obj);
-        lua_remove(L, 1);
         lua_pop(L, 1);
         return obj;
     }
@@ -41,7 +41,7 @@ struct LuaBaseCallWrapper
 };
 
 template <typename Result_, typename Class_, typename ...Args_>
-struct LuaCallWrapper
+struct LuaCallWrapper final
 {
     using Base = LuaBaseCallWrapper<Result_, Class_, Args_...>;
 
@@ -68,7 +68,7 @@ struct LuaCallWrapper<void, Class_, Args_...>
 } // impl
 
 template <typename Result_, class Class_, typename ...Args_>
-class LuaMethod
+class LuaMethod final
 {
 public:
     typedef Result_ (Class_::*Func)(Args_...);
@@ -77,11 +77,11 @@ public:
     template <Func Func_, std::size_t ...Indices_>
     static bool Register(lua_State* L, char const* className, char const* methodName)
     {
-        using namespace impl;
+        using namespace detail;
         assert(className && methodName);
 
         lua_getglobal(L, className);
-        lua_getfield(L, -1, "return_table");
+        lua_getfield(L, -1, "_impl_table");
         lua_pushcfunction(L, (LuaCallWrapper<Result_, Class_, Args_...>::template Call<Func_, Indices_...>));
         lua_setfield(L, -2, methodName);
 
@@ -90,14 +90,14 @@ public:
     }
 
     template <Func Func_>
-    static constexpr impl::MethodRegistrar MakeRegistrar()
+    static constexpr detail::MethodRegistrar MakeRegistrar()
     {
-        return DeduceRegistrar<Func_>(typename impl::BuildIndexSequence<sizeof ...(Args_)>::Type());
+        return DeduceRegistrar<Func_>(typename detail::BuildIndexSequence<sizeof ...(Args_)>::Type());
     }
 
 private:
     template <Func Func_, std::size_t ...Indices_>
-    static constexpr impl::MethodRegistrar DeduceRegistrar(impl::IndexSequence<Indices_...>)
+    static constexpr detail::MethodRegistrar DeduceRegistrar(detail::IndexSequence<Indices_...>)
     {
         return Register<Func_, Indices_...>;
     }

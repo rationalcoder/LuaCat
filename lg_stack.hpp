@@ -19,7 +19,7 @@ struct Aggregate
     static constexpr std::size_t arity() { return sizeof ...(Args_); }
 };
 
-namespace impl
+namespace detail
 {
 
 /**
@@ -77,7 +77,7 @@ struct SignedIntegerManager
     template <std::size_t Index_>
     static T_ At(lua_State* L)
     {
-        return lua_tointeger(L, Index_);
+        return (T_)lua_tointeger(L, Index_);
     }
 };
 
@@ -90,14 +90,23 @@ struct UnsignedIntegerManager
 {
     static int Push(lua_State* L, T_ val)
     {
+// FIXME: Hackish lua version checking to handle the changes to how Lua handles unsigned numbers.
+#if LUA_VERSION_NUM >= 503
         lua_pushinteger(L, val);
+#else
+        lua_pushunsigned(L, val);
+#endif
         return 1;
     }
 
     template <std::size_t Index_>
     static T_ At(lua_State* L)
     {
+#if LUA_VERSION_NUM >= 503
         return (T_)lua_tointeger(L, Index_);
+#else
+        return lua_tounsigned(L, Index_);
+#endif
     }
 };
 
@@ -134,7 +143,7 @@ struct StackManager<bool>
     template <std::size_t Index_>
     static bool At(lua_State* L)
     {
-        return lua_toboolean(L, Index_);
+        return (bool)lua_toboolean(L, Index_);
     }
 };
 

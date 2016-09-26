@@ -1,26 +1,26 @@
 #ifndef LG_COMMON_HPP
 #define LG_COMMON_HPP
 
-#include <cstdlib>
+#include <cstdlib> // size_t
 #include <lua.hpp>
 
 namespace luaglue
 {
 
-namespace impl
+namespace detail
 {
 
-typedef bool(*MethodRegistrar)(lua_State*, char const* className, char const* methodName);
+// Helper index sequence. (pre c++14 library)
 
 template<std::size_t... Indices_>
-struct IndexSequence
+struct IndexSequence final
 {
     typedef IndexSequence<Indices_..., sizeof...(Indices_)> Next;
 };
 
-// Builds an _Index_tuple<0, 1, 2, ..., _Num-1>.
+// Builds an IndexSequence<0, 1, 2, ..., Num_-1>.
 template<std::size_t Num_>
-struct BuildIndexSequence
+struct BuildIndexSequence final
 {
     typedef typename BuildIndexSequence<Num_ - 1>::Type::Next Type;
 };
@@ -31,7 +31,7 @@ struct BuildIndexSequence<0>
     typedef IndexSequence<> Type;
 };
 
-} // impl
+} // detail
 
 } // luaglue
 

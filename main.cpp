@@ -60,27 +60,43 @@ private:
     int i2_;
 };
 
+void ExportAPI(lua_State* L)
+{
+    luaglue::LuaClass<Foo, Foo::Factory, int, int> foo("Foo");
+
+    luaglue::MethodSet fooMethods =
+    {
+        {"GetI1", LG_METHOD(&Foo::GetI1)},
+        {"GetI2", LG_METHOD(&Foo::GetI2)},
+        {"SayHello", LG_METHOD(&Foo::SayHello)},
+        {"DoStuff", LG_METHOD(&Foo::DoStuff)},
+        {"Procedure", LG_METHOD(&Foo::Procedure)},
+    };
+
+    foo.AddMethods(fooMethods);
+    foo.Export(L);
+}
+
 int main()
 {
     lua_State* L = luaL_newstate();
     luaL_openlibs(L);
-    luaglue::LuaClass<Foo, Foo::Factory, int, int> foo("Foo");
-
-    LG_ADD_METHOD(foo, "GetI1", &Foo::GetI1);
-    LG_ADD_METHOD(foo, "GetI2", &Foo::GetI2);
-    LG_ADD_METHOD(foo, "SayHello", &Foo::SayHello);
-    LG_ADD_METHOD(foo, "DoStuff", &Foo::DoStuff);
-    LG_ADD_METHOD(foo, "Procedure", &Foo::Procedure);
-
-    foo.Register(L);
+    ExportAPI(L);
 
     luaL_dostring(L, " foo = Foo:aquire(1, 2)\n"
-                     " print(\"One: \"..foo:GetI1() .. \" Two: \" ..foo:GetI2())\n"
-                     " foo:SayHello()\n"
+                     " foo2 = Foo:aquire(3, 4)\n"
+                     " --print(\"One: \"..foo:GetI1() .. \" Two: \" ..foo:GetI2())\n"
+                     " --print(\"One: \"..foo2:GetI1() .. \" Two: \" ..foo2:GetI2())\n"
+                     " --foo:SayHello()\n"
+                     " --foo2:SayHello()\n"
                      " foo:DoStuff(1, 2, 3.1, 4.2, true, 5)\n"
-                     " foo:Procedure()\n"
-                     " Foo.release(foo)");
+                     " foo2:DoStuff(1, 2, 3.5, 4.2, true, 5)\n"
+                     " --foo:Procedure()\n"
+                     " --foo2:Procedure()\n"
+                     " Foo.release(foo)"
+                     " Foo.release(foo2)");
 
+    lua_close(L);
 
     return EXIT_SUCCESS;
 }
