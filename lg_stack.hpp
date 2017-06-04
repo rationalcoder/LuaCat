@@ -2,146 +2,127 @@
 #define LG_STACK_HPP
 #include <cstdint>
 #include "lg_common.hpp"
+#include "lg_utility.hpp"
 
-/**
- * \file lua_stack.hpp
- * \brief Handles interaction with the lua stack.
- */
+//! \file lua_stack.hpp
+//! \brief Handles interaction with the lua stack.
+//!
 
-
-namespace luaglue
+namespace lg
 {
-
-template <typename Type_, typename ...Args_>
-struct Aggregate
-{
-    typedef Type_ Type;
-    static constexpr std::size_t arity() { return sizeof ...(Args_); }
-};
-
 namespace detail
 {
 
-/**
- * \brief Generates functions to push and extract types from the lua stack.
- * \tparam T_ The type that needs to be pushed/extracted from the stack.
- * \tparam Args_ Template parameter pack (unused at call site) used
- * to allow for specializations of the form:
- * \code
- * template <typename ...Args_>
- * StackManager<Aggregate<Args_...>> {};
- * \endcode
- * \note If a stack manager for a needed type isn't in this file, you will
- * get a failed static_assert and will need to implement it yourself.
- */
-template <typename T_, typename ...Args_>
+//! Generates functions to push and extract types from the lua stack.
+//!
+//! \tparam T_ The type that needs to be pushed/extracted from the stack.
+//! \tparam Args_ Template parameter pack (unused at call site) used
+//! to allow for specializations of the form:
+//! \code
+//! template <typename ...Args_>
+//! StackManager<Aggregate<Args_...>> {};
+//! \endcode
+//! \note If a stack manager for a needed type isn't in this file, you will
+//! get a failed static_assert and will need to implement it yourself.
+//!
+template <typename T_, typename... Args_>
 struct StackManager
 {
-    /** Allow for a type-dependent static assertion that will only trigger at instantiation time. */
-    template <typename Any_>
-    struct False { enum { RESULT = false }; };
+    static_assert(detail::TypeDependentFalse<T_>::value, "No Lua StackManager defined for one or more of your types. See the README for more info.");
 
-    static_assert(False<T_>::RESULT, "No Lua StackManager defined for one or more of your types. See the README for more info.");
+    //! Pushes a value onto the lua stack.
+    //!
+    //! \param L The lua state to use.
+    //! \param val The value that you want to push.
+    //! \returns How many values were pushed.
+    //!
+    static int push(lua_State* L, T_ val);
 
-    /**
-     * \brief Pushes a value onto the lua stack.
-     * \param L The lua state to use.
-     * \param val The value that you want to push.
-     * \returns How many values were pushed.
-     */
-    static int Push(lua_State* L, T_ val);
-
-    /**
-     * \brief Extracts a value from the lua stack.
-     * \tparam Index_ the index into the Lua stack to extract from.
-     * \param L The lua state that we are working with.
-     * \returns The converted value.
-     */
+    //! Extracts a value from the lua stack.
+    //!
+    //! \tparam Index_ the index into the Lua stack to extract from.
+    //! \param L The lua state that we are working with.
+    //! \returns The converted value.
+    //!
     template <std::size_t Index_>
-    static T_ At(lua_State* L);
+    static T_ at(lua_State* L);
 };
 
-/**
- * \brief The implementation of any stack manager that works on signed integers.
- * \note The implementation is provided through inheritance.
- */
+
+//! The implementation of any stack manager that works on signed integers.
+//!
+//! \note The implementation is provided through inheritance.
+//!
 template <typename T_>
 struct SignedIntegerManager
 {
-    static int Push(lua_State* L, T_ val)
+    static int push(lua_State* L, T_ val)
     {
         lua_pushinteger(L, val);
         return 1;
     }
 
     template <std::size_t Index_>
-    static T_ At(lua_State* L)
+    static T_ at(lua_State* L)
     {
-        return (T_)lua_tointeger(L, Index_);
+        return (T_)luaL_checkinteger(L, Index_);
     }
 };
 
-/**
- * \brief The implementation of any stack manager that works on unsigned integers.
- * \note The implementation is provided through inheritance of this class.
- */
+
+//! The implementation of any stack manager that works on unsigned integers.
+//!
+//! \note The implementation is provided through inheritance of this class.
+//!
 template <typename T_>
 struct UnsignedIntegerManager
 {
-    static int Push(lua_State* L, T_ val)
+    static int push(lua_State* L, T_ val)
     {
-// FIXME: Hackish lua version checking to handle the changes to how Lua handles unsigned numbers.
-#if LUA_VERSION_NUM >= 503
-        lua_pushinteger(L, val);
-#else
         lua_pushunsigned(L, val);
-#endif
         return 1;
     }
 
     template <std::size_t Index_>
-    static T_ At(lua_State* L)
+    static T_ at(lua_State* L)
     {
-#if LUA_VERSION_NUM >= 503
-        return (T_)lua_tointeger(L, Index_);
-#else
-        return lua_tounsigned(L, Index_);
-#endif
+        return (T_)luaL_checkunsigned(L, Index_);
     }
 };
 
-/**
- * \brief The implementation of the float/double stack managers.
- * \note The implementation is provided through inheritance of this class.
- */
+
+//! The implementation of the float/double stack managers.
+//!
+//! \note The implementation is provided through inheritance of this class.
+//!
 template <typename T_>
 struct RealNumberManager
 {
-    static int Push(lua_State* L, T_ val)
+    static int push(lua_State* L, T_ val)
     {
         lua_pushnumber(L, val);
         return 1;
     }
 
     template <std::size_t Index_>
-    static T_ At(lua_State* L)
+    static T_ at(lua_State* L)
     {
-        return (T_)lua_tonumber(L, Index_);
+        return (T_)luaL_checknumber(L, Index_);
     }
 };
 
-// boolean manager
+//! Stack manager for booleans.
 template <>
 struct StackManager<bool>
 {
-    static int Push(lua_State* L, bool val)
+    static int push(lua_State* L, bool val)
     {
         lua_pushboolean(L, val);
         return 1;
     }
 
     template <std::size_t Index_>
-    static bool At(lua_State* L)
+    static bool at(lua_State* L)
     {
         return (bool)lua_toboolean(L, Index_);
     }
@@ -173,8 +154,8 @@ struct StackManager<uint32_t> : UnsignedIntegerManager<uint32_t> {};
 template<>
 struct StackManager<uint64_t> : UnsignedIntegerManager<uint64_t> {};
 
-} // end impl
+} // end detail
 
-} // end luaglue
+} // end lg
 
 #endif // LG_MANIP_HPP
