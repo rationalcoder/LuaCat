@@ -7,12 +7,20 @@
 #include "lg_stack.hpp"
 
 #define LG_METHOD(name, ptr) lg::Method<decltype(ptr), ptr>(name)
+#define STACK_CHECK(location, expected) printf("Stack size at location %s: %d, expected %d\n", location, expected, lua_gettop(L))
 
 namespace lg
 {
 
 namespace detail
 {
+
+struct UserDataContents
+{
+    void* instance = nullptr;
+    uint16_t typeId = 0;
+    uint8_t apiId = 0;
+};
 
 template <uint32_t ApiId_,
           uint32_t ClassId_,
@@ -29,23 +37,13 @@ struct MethodCallWrapperBase
     {
         size_t numArgs = lua_gettop(L);
         if (numArgs != num_expanded_args()) luaL_error(L, "expected %d arguments, got %d", num_expanded_args(), numArgs);
-        if (!lua_istable(L, 1)) luaL_argerror(L, 1, "expected instance. Did you forget to call with ':'?");
-        if (lua_getfield(L, 1, "_instance") != LUA_TLIGHTUSERDATA) luaL_argerror(L, 1, "invalid instance.");
-        Class_* obj = (Class_*)lua_touserdata(L, -1);
+        if (!lua_isuserdata(L, 1)) luaL_argerror(L, 1, "expected instance. Did you forget to call with ':'?");
 
-        if (lua_getfield(L, 1, "_api_id") != LUA_TNUMBER || lua_tointeger(L, -1) != ApiId_)
-            luaL_argerror(L, 1, "invalid instance.");
+        UserDataContents* contents = (UserDataContents*)lua_touserdata(L, -1);
+        if (contents->apiId != ApiId_) luaL_argerror(L, 1, "invalid instance(bad API ID)");
+        if (contents->typeId != ClassId_) luaL_argerror(L, 1, "invalid instance(bad type ID)");
 
-        if (lua_getfield(L, 1, "_class_id") != LUA_TNUMBER || lua_tointeger(L, -1) != ClassId_)
-            luaL_argerror(L, 1, "invalid instance.");
-
-        // [1]: instance table
-        // [2]: instance
-        // [3]: API ID
-        // [4]: Class ID
-        lua_pop(L, 3);
-        // [1]: instance table
-        return obj;
+        return (Class_*)contents->instance;
     }
 };
 
@@ -98,7 +96,6 @@ struct MethodCallWrapper<ApiId_, ClassId_, TypeSet_, void, Class_, Args_...>
     }
 };
 
-
 template <uint32_t ApiId_,
           uint32_t ClassId_,
           typename TypeSet_,
@@ -129,7 +126,6 @@ public:
 
         // Add the function to whatever table is on top of the stack.
         lua_pushcfunction(L, &Wrapper::template call<Pointer_>);
-        printf("setting method: %s %d\n", name, lua_gettop(L));
         lua_setfield(L, -2, name);
     }
 
@@ -162,10 +158,10 @@ using MethodExportPair = ExportPair<void(*)(lua_State*, char const*)>;
 
 } // namespace detail
 
-struct Factory;
+struct NullFactory {};
 
 template <class Type_,
-          class Factory_ = Factory>
+          class Factory_>
 class Class
 {
 public:
@@ -187,7 +183,7 @@ template <typename... Args_>
 struct Constructor {};
 
 template <class Type_,
-          class Factory_ = Factory>
+          class Factory_ = NullFactory>
 class Enum
 {
 public:
@@ -211,6 +207,7 @@ struct EnumValue
     char const* name;
     T_ value;
 };
+
 
 template <uint32_t ApiId_,
           uint32_t TypeId_,
@@ -249,6 +246,65 @@ private:
     {
         static void export_to(lua_State* L)
         {
+            lua_pushcfunction(L, &call_metamethod);
+            lua_setfield(L, -2, "__call");
+        }
+
+        static int call_metamethod(lua_State* L)
+        {
+            return call_metamethod_impl(L, typename detail::BuildIndexSequence<sizeof...(Args_)>::Type{});
+        }
+
+        template <std::size_t... Indices_>
+        static int call_metamethod_impl(lua_State* L, detail::IndexSequence<Indices_...>)
+        {
+            size_t numArgs = lua_gettop(L);
+            if (numArgs != sizeof...(Args_) + 1) luaL_error(L, "expected %d arguments, got %d", sizeof...(Args_), numArgs-1);
+
+            Type* instance = Factory::make(detail::StackManager<Args_>::template at<Indices_ + 2>(L)...);
+            if (!instance) return luaL_error(L, "Failed to allocate object(API ID: %u, Type ID: %u).", api_id(), type_id());
+
+            detail::UserDataContents contents;
+            contents.apiId = api_id();
+            contents.typeId = type_id();
+            contents.instance = instance;
+
+            detail::UserDataContents* uData = (detail::UserDataContents*)lua_newuserdata(L, sizeof(contents));
+            *uData = contents;
+
+            lua_newtable(L); // instance's metatable
+            lua_getfield(L, 1, "_methods");
+            // [1]: class table
+            // [2]: new userdata
+            // [3]: instance metatable
+            // [4]: _methods table from class table
+            lua_pushcclosure(L, &index_metamethod, 1);
+            lua_setfield(L, -2, "__index");
+            lua_pushcfunction(L, &gc_metamethod);
+            lua_setfield(L, -2, "__gc");
+            // [1]: class table
+            // [2]: new userdata
+            // [3]: instance metatable
+            lua_setmetatable(L, -2);
+
+            // [-1]: new userdata
+            return 1;
+        }
+
+        static int index_metamethod(lua_State* L)
+        {
+            // [1]: instance userdata
+            // [2]: method name
+            lua_pushvalue(L, lua_upvalueindex(1)); // push the _methods table
+            lua_getfield(L, -1, lua_tostring(L, -2)); // get the method, or nil
+            return 1;
+        }
+
+        static int gc_metamethod(lua_State* L)
+        {
+            detail::UserDataContents* contents = (detail::UserDataContents*)lua_touserdata(L, -1);
+            Factory_::free((Type*)contents->instance);
+            return 0;
         }
     };
 
@@ -287,20 +343,17 @@ public:
 
     void export_to(lua_State* L) const
     {
-        printf("exporting class: %s\n", name_);
         // TODO: handle this better.
         assert(name_ && *name_ && "Attempted to export a class without a name.");
         assert(ctorExportFunc_ && "Attempted to export a class without a constructor.");
 
         // [1]: API table
-        printf("sse %d=1\n", lua_gettop(L));
         lua_newtable(L); // Class table
         lua_newtable(L); // Metatable for the class table (need to set up the ctor)
 
         // [1]: API table
         // [2]: class table
         // [3]: class metatable
-        printf("sse %d=3\n", lua_gettop(L));
         ctorExportFunc_(L); // Export the constructor (added to the class metatable).
         lua_setmetatable(L, -2); // Done with the class metatable, set it.
         lua_newtable(L); // Metatable for class instances.
@@ -308,7 +361,6 @@ public:
         // [1]: API table
         // [2]: class table
         // [3]: instance metatable
-        printf("sse %d=3\n", lua_gettop(L));
         OperatorExporter::export_to(L); // Export any available operators to the instance metatable.
         lua_setfield(L, -2, "_instance_mt");
 
@@ -319,15 +371,10 @@ public:
         // [1]: API table
         // [2]: class table
         // [3]: methods table
-        printf("sse %d=3\n", lua_gettop(L));
         lua_setfield(L, -2, "_methods");
-        printf("sse %d=2\n", lua_gettop(L));
         lua_setfield(L, -2, name_);
-        printf("sse %d=1\n", lua_gettop(L));
 
         // [1]: API table.
-        printf("end of export\n");
-        printf("sse %d=1\n", lua_gettop(L));
     }
 
 private:
@@ -442,9 +489,7 @@ public:
 
     virtual void export_to(lua_State* L)
     {
-        printf("Start of export types\n");
         detail::ExporterCaller<sizeof...(TypeExporters_)-1>::export_to(exporters_, L);
-        printf("end of export types\n");
     }
 
 private:
@@ -504,13 +549,10 @@ public:
         if (named) lua_newtable(L);
         else lua_pushglobaltable(L);
 
-        printf("In Api. Stack size before exporting types: %d\n", lua_gettop(L));
         exporterSet_->export_to(L);
-        printf("After export API\n");
 
         if (named) lua_setglobal(L, name_);
         else lua_pop(L, 1);
-        printf("After export API all\n");
     }
 
 private:
@@ -529,7 +571,13 @@ auto make_api(const char* name, UniqueId<Id_>) -> Api<Id_>
 }
 
 template <unsigned Id_>
-auto make_id() -> UniqueId<Id_>
+auto make_api(const char* name) -> Api<Id_>
+{
+    return Api<Id_>(name);
+}
+
+template <unsigned Id_>
+auto id() -> UniqueId<Id_>
 {
     return UniqueId<Id_>{};
 }

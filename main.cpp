@@ -1,5 +1,7 @@
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
 #include <cstdio>
-#include <lg.hpp>
+#include "lg.hpp"
 
 using namespace std;
 
@@ -13,7 +15,21 @@ struct Foo
     }
 };
 
-struct Factory {};
+struct FooFactory
+{
+    static Foo* make()
+    {
+        Foo* p = new Foo();
+        printf("returning %p\n", p);
+        return p;
+    }
+
+    static void free(Foo* p)
+    {
+        printf("deleting %p\n", p);
+        delete p;
+    }
+};
 
 enum class TestEnum1
 {
@@ -31,13 +47,13 @@ enum class TestEnum2
 
 int main()
 {
-    auto api = lg::make_api("TestApi", lg::make_id<0>());
-    auto& types = api.set_types(lg::Class<Foo>("Foo"),
+    auto api = lg::make_api("TestApi", lg::id<0>());
+    auto& types = api.set_types(lg::Class<Foo, FooFactory>("Foo"),
                                 lg::Enum<TestEnum1>("TestEnum1"),
                                 lg::Enum<TestEnum2>("TestEnum2"));
     auto& foo = types.at<Foo>();
 
-    foo.set_constructor(lg::Constructor<int, int>());
+    foo.set_constructor(lg::Constructor<>());
     foo.add_methods(
         LG_METHOD("test", &Foo::test)
     );
@@ -51,8 +67,9 @@ int main()
     );
 
     lua_State* L = luaL_newstate();
+    luaL_openlibs(L);
     api.export_to(L);
-    luaL_dostring(L, "local m = TestApi.Foo._methods;");
+    luaL_dostring(L, "local Foo = TestApi.Foo; local foo = Foo(); foo:test();");
     if (lua_gettop(L)) printf("Error: %s\n", lua_tostring(L, -1));
     lua_close(L);
 
