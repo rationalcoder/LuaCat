@@ -57,10 +57,28 @@ struct TypeFinder<Target_, HeadType_, TailTypes_...>
 
 // Simple type-set for storing raw user-defined types.
 
+
+template <typename, typename...>
+struct TypeSetContains;
+
+template <class Target_>
+struct TypeSetContains<Target_> : std::false_type {};
+
+template <typename Target_, typename HeadType_, class... TailTypes_>
+struct TypeSetContains<Target_, HeadType_, TailTypes_...> : std::conditional<std::is_same<Target_, HeadType_>::value,
+                                                                             std::true_type,
+                                                                             TypeSetContains<HeadType_, TailTypes_...>>::type {};
+
 template <typename... Types_>
 struct TypeSet
 {
-    static constexpr size_t size() { return sizeof...(Types_); }
+    template <typename T_>
+    static constexpr bool contains() { return TypeSetContains<T_, Types_...>::value; }
+
+    template <typename T_>
+    static constexpr int index_of() { return IndexOf<T_, Types_...>::value; }
+
+    static constexpr std::size_t size() { return sizeof...(Types_); }
 };
 
 template <typename Any_>

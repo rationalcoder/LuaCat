@@ -1,5 +1,3 @@
-#define WIN32_LEAN_AND_MEAN
-#include <winsock2.h>
 #include <cstdio>
 #include "lg.hpp"
 
@@ -9,25 +7,9 @@ class Factory;
 
 struct Foo
 {
-    void test()
+    void test(int, int, int, int, int)
     {
         printf("got here\n");
-    }
-};
-
-struct FooFactory
-{
-    static Foo* make()
-    {
-        Foo* p = new Foo();
-        printf("returning %p\n", p);
-        return p;
-    }
-
-    static void free(Foo* p)
-    {
-        printf("deleting %p\n", p);
-        delete p;
     }
 };
 
@@ -48,7 +30,7 @@ enum class TestEnum2
 int main()
 {
     auto api = lg::make_api("TestApi", lg::id<0>());
-    auto& types = api.set_types(lg::Class<Foo, FooFactory>("Foo"),
+    auto& types = api.set_types(lg::Class<Foo, lg::HeapFactory<Foo>>("Foo"),
                                 lg::Enum<TestEnum1>("TestEnum1"),
                                 lg::Enum<TestEnum2>("TestEnum2"));
     auto& foo = types.at<Foo>();
@@ -67,9 +49,8 @@ int main()
     );
 
     lua_State* L = luaL_newstate();
-    luaL_openlibs(L);
     api.export_to(L);
-    luaL_dostring(L, "local Foo = TestApi.Foo; local foo = Foo(); foo:test();");
+    luaL_dofile(L, "scripts/test.lua");
     if (lua_gettop(L)) printf("Error: %s\n", lua_tostring(L, -1));
     lua_close(L);
 

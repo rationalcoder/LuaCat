@@ -7,7 +7,6 @@
 #include "lg_stack.hpp"
 
 #define LG_METHOD(name, ptr) lg::Method<decltype(ptr), ptr>(name)
-#define STACK_CHECK(location, expected) printf("Stack size at location %s: %d, expected %d\n", location, expected, lua_gettop(L))
 
 namespace lg
 {
@@ -18,12 +17,21 @@ namespace detail
 struct UserDataContents
 {
     void* instance = nullptr;
-    uint16_t typeId = 0;
-    uint8_t apiId = 0;
+    ApiId typeId = 0;
+    TypeId apiId = 0;
 };
 
-template <uint32_t ApiId_,
-          uint32_t ClassId_,
+inline char const* function_name(lua_State* L)
+{
+    lua_Debug debug;
+    lua_getstack(L, 0, &debug);
+    lua_getinfo(L, "n", &debug);
+
+    return debug.name;
+}
+
+template <ApiId ApiId_,
+          TypeId ClassId_,
           typename Class_,
           typename Pointer_,
           size_t NumArgs_>
@@ -35,11 +43,12 @@ struct MethodCallWrapperBase
     //! Grabs the instance pointer and does common error checking.
     static Class_* instance(lua_State* L)
     {
-        size_t numArgs = lua_gettop(L);
-        if (numArgs != num_expanded_args()) luaL_error(L, "expected %d arguments, got %d", num_expanded_args(), numArgs);
+        int numArgs = lua_gettop(L);
+        if (numArgs != num_expanded_args()) luaL_error(L, "In function '%s': expected %d arguments(including self), got %d",
+                                                       function_name(L), num_expanded_args(), numArgs);
         if (!lua_isuserdata(L, 1)) luaL_argerror(L, 1, "expected instance. Did you forget to call with ':'?");
 
-        UserDataContents* contents = (UserDataContents*)lua_touserdata(L, -1);
+        UserDataContents* contents = (UserDataContents*)lua_touserdata(L, 1);
         if (contents->apiId != ApiId_) luaL_argerror(L, 1, "invalid instance(bad API ID)");
         if (contents->typeId != ClassId_) luaL_argerror(L, 1, "invalid instance(bad type ID)");
 
@@ -47,8 +56,8 @@ struct MethodCallWrapperBase
     }
 };
 
-template <uint32_t ApiId_,
-          uint32_t ClassId_,
+template <ApiId ApiId_,
+          TypeId ClassId_,
           typename TypeSet_,
           typename Result_,
           typename Class_,
@@ -67,12 +76,12 @@ struct MethodCallWrapper : MethodCallWrapperBase<ApiId_, ClassId_, Class_, Resul
     static int call_impl(lua_State* L, detail::IndexSequence<Indices_...>)
     {
         Class_* instance = Base::instance(L);
-        return StackManager<Result_>::push(L, (instance->*Func_)(detail::StackManager<Args_>::at<Indices_ + 2>(L)...));
+        return StackManager<Result_, TypeSet_, ApiId_>::push(L, (instance->*Func_)(detail::StackManager<Args_, TypeSet_, ApiId_>::template at<Indices_ + 2>(L)...));
     }
 };
 
-template <uint32_t ApiId_,
-          uint32_t ClassId_,
+template <ApiId ApiId_,
+          TypeId ClassId_,
           typename TypeSet_,
           typename Class_,
           typename... Args_>
@@ -92,12 +101,12 @@ struct MethodCallWrapper<ApiId_, ClassId_, TypeSet_, void, Class_, Args_...>
     static void call_impl(lua_State* L, detail::IndexSequence<Indices_...>)
     {
         Class_* instance = Base::instance(L);
-        (instance->*Func_)(detail::StackManager<Args_>::at<Indices_ + 2>(L)...);
+        (instance->*Func_)(detail::StackManager<Args_, TypeSet_, ApiId_>::template at<Indices_ + 2>(L)...);
     }
 };
 
-template <uint32_t ApiId_,
-          uint32_t ClassId_,
+template <ApiId ApiId_,
+          TypeId ClassId_,
           typename TypeSet_,
           typename Result_,
           typename Class_,
@@ -160,6 +169,20 @@ using MethodExportPair = ExportPair<void(*)(lua_State*, char const*)>;
 
 struct NullFactory {};
 
+template <typename T_, typename... CtorArgs_>
+struct HeapFactory
+{
+    static T_* make(CtorArgs_... args)
+    {
+        return new T_(args...);
+    }
+
+    static void free(T_* p)
+    {
+        delete p;
+    }
+};
+
 template <class Type_,
           class Factory_>
 class Class
@@ -181,6 +204,8 @@ private:
 
 template <typename... Args_>
 struct Constructor {};
+
+using DefaultConstructor = Constructor<>;
 
 template <class Type_,
           class Factory_ = NullFactory>
@@ -208,9 +233,8 @@ struct EnumValue
     T_ value;
 };
 
-
-template <uint32_t ApiId_,
-          uint32_t TypeId_,
+template <ApiId ApiId_,
+          TypeId TypeId_,
           typename Type_,
           typename Factory_,
           typename TypeSet_,
@@ -221,8 +245,8 @@ class TypeExporter
     "\n\n(LG): No TypeExporter specialization found for that type wrapper. Check your call to lg::Api::set_types(). \n\n");
 };
 
-template <uint32_t ApiId_,
-          uint32_t TypeId_,
+template <ApiId ApiId_,
+          TypeId TypeId_,
           typename Type_,
           typename Factory_,
           typename TypeSet_>
@@ -234,8 +258,8 @@ public:
     using Wrapper = lg::Class<Type_, Factory_>;
     using TypeSet = TypeSet_;
 
-    static constexpr uint32_t api_id() { return ApiId_; }
-    static constexpr uint32_t type_id() { return TypeId_; }
+    static constexpr ApiId api_id() { return ApiId_; }
+    static constexpr TypeId type_id() { return TypeId_; }
 
 private:
     using MethodExportFunc = void(*)(lua_State* L, char const* name);
@@ -259,9 +283,9 @@ private:
         static int call_metamethod_impl(lua_State* L, detail::IndexSequence<Indices_...>)
         {
             size_t numArgs = lua_gettop(L);
-            if (numArgs != sizeof...(Args_) + 1) luaL_error(L, "expected %d arguments, got %d", sizeof...(Args_), numArgs-1);
-
-            Type* instance = Factory::make(detail::StackManager<Args_>::template at<Indices_ + 2>(L)...);
+            if (numArgs != sizeof...(Args_) + 1) luaL_error(L, "In constructor for type '%s': expected %d arguments, got %d",
+                                                            detail::function_name(L), sizeof...(Args_), numArgs-1);
+            Type* instance = Factory::make(detail::StackManager<Args_, TypeSet_, ApiId_>::template at<Indices_ + 2>(L)...);
             if (!instance) return luaL_error(L, "Failed to allocate object(API ID: %u, Type ID: %u).", api_id(), type_id());
 
             detail::UserDataContents contents;
@@ -327,7 +351,7 @@ public:
     char const* name() const { return name_; }
 
     template <typename... Args_>
-    void set_constructor(lg::Constructor<Args_...> ctor)
+    void set_constructor(lg::Constructor<Args_...>)
     {
         ctorExportFunc_ = &CtorExporter<Args_...>::export_to;
     }
@@ -383,8 +407,8 @@ private:
     std::vector<detail::MethodExportPair> methodExportPairs_;
 };
 
-template <uint32_t ApiId_,
-          uint32_t TypeId_,
+template <ApiId ApiId_,
+          TypeId TypeId_,
           typename Type_,
           typename Factory_,
           typename TypeSet_>
@@ -395,8 +419,8 @@ public:
     using Factory = Factory_;
     using Wrapper = lg::Enum<Type_, Factory_>;
 
-    static constexpr uint32_t api_id() { return ApiId_; }
-    static constexpr uint32_t type_id() { return TypeId_; }
+    static constexpr ApiId api_id() { return ApiId_; }
+    static constexpr TypeId type_id() { return TypeId_; }
 
 public:
     TypeExporter(char const* name)
@@ -497,7 +521,7 @@ private:
 };
 
 
-template <uint32_t ApiId_>
+template <ApiId ApiId_>
 class Api
 {
 public:
@@ -589,5 +613,8 @@ auto enum_value(char const* name, T_ value) -> lg::EnumValue<T_>
 }
 
 } // namespace lg
+
+#undef STACK_CHECK
+#undef ERROR_WITH_LOCATION
 
 #endif // LG_HPP
