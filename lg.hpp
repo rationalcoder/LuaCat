@@ -14,22 +14,6 @@ namespace lg
 namespace detail
 {
 
-struct UserDataContents
-{
-    void* instance = nullptr;
-    ApiId typeId = 0;
-    TypeId apiId = 0;
-};
-
-inline char const* function_name(lua_State* L)
-{
-    lua_Debug debug;
-    lua_getstack(L, 0, &debug);
-    lua_getinfo(L, "n", &debug);
-
-    return debug.name;
-}
-
 template <ApiId ApiId_,
           TypeId ClassId_,
           typename Class_,

@@ -36,7 +36,8 @@ struct unqualified_type
 //!
 template <typename T_, typename ApiTypeList_>
 struct is_user_type : std::conditional<ApiTypeList_::template contains<typename unqualified_type<T_>::type>(),
-                                       std::false_type, std::true_type>::type {};
+                                       std::false_type,
+                                       std::true_type>::type {};
 
 template <typename T_, typename ApiTypeList_, ApiId ApiId_>
 struct UserTypeStackManager;
@@ -69,23 +70,54 @@ struct UknownTypeStackManager
     static T_ at(lua_State* L);
 };
 
-//! Generates functions to push and extract types from the lua stack.
+//! Primary template; generates functions to push and extract types from the lua stack.
 //!
 template <typename T_, typename ApiTypeList_, ApiId ApiId_>
 struct StackManager : std::conditional<is_user_type<T_, ApiTypeList_>::value,
                       UserTypeStackManager<T_, ApiTypeList_, ApiId_>,
                       UknownTypeStackManager<T_>>::type {};
 
+//! Current representation of objects.
+//! There will probably be support for different representations to avoid the
+//! extra indirection, but this will work fine until the basic features are implemented.
+//!
+struct UserDataContents
+{
+    void* instance = nullptr;
+    ApiId typeId = 0;
+    TypeId apiId = 0;
+};
+
+inline char const* function_name(lua_State* L)
+{
+    lua_Debug debug;
+    lua_getstack(L, 0, &debug);
+    lua_getinfo(L, "n", &debug);
+
+    return debug.name;
+}
+
+
 template <typename T_, typename ApiTypeList_, ApiId ApiId_>
 struct UserTypeStackManager
 {
-    static int push(lua_State* L, T_ val)
+    static LG_FORCE_INLINE int push(lua_State* L, T_* val)
     {
-        return 0;
+        UserDataContents* contents = (UserDataContents*)lua_newuserdata(L, sizeof(UserDataContents));
+        contents->apiId = ApiId_;
+        contents->typeId = IndexOf<T_, ApiTypeList_>::value;
+        contents->instance = val;
+
+
+
+        return 1;
     }
 
     template <std::size_t Index_>
-    static T_ at(lua_State* L);
+    static LG_FORCE_INLINE T_* at(lua_State* L)
+    {
+        return nullptr;
+    }
 };
 
 //! The implementation of any stack manager that works on signed integers.
@@ -95,14 +127,14 @@ struct UserTypeStackManager
 template <typename T_>
 struct SignedIntegerManager
 {
-    static int push(lua_State* L, T_ val)
+    static LG_FORCE_INLINE int push(lua_State* L, T_ val)
     {
         lua_pushinteger(L, val);
         return 1;
     }
 
     template <std::size_t Index_>
-    static T_ at(lua_State* L)
+    static LG_FORCE_INLINE T_ at(lua_State* L)
     {
         return (T_)luaL_checkinteger(L, Index_);
     }
@@ -116,14 +148,14 @@ struct SignedIntegerManager
 template <typename T_>
 struct UnsignedIntegerManager
 {
-    static int push(lua_State* L, T_ val)
+    static LG_FORCE_INLINE int push(lua_State* L, T_ val)
     {
         lua_pushunsigned(L, val);
         return 1;
     }
 
     template <std::size_t Index_>
-    static T_ at(lua_State* L)
+    static LG_FORCE_INLINE T_ at(lua_State* L)
     {
         return (T_)luaL_checkunsigned(L, Index_);
     }
@@ -137,14 +169,14 @@ struct UnsignedIntegerManager
 template <typename T_>
 struct RealNumberManager
 {
-    static int push(lua_State* L, T_ val)
+    static LG_FORCE_INLINE int push(lua_State* L, T_ val)
     {
         lua_pushnumber(L, val);
         return 1;
     }
 
     template <std::size_t Index_>
-    static T_ at(lua_State* L)
+    static LG_FORCE_INLINE T_ at(lua_State* L)
     {
         return (T_)luaL_checknumber(L, Index_);
     }
@@ -154,14 +186,14 @@ struct RealNumberManager
 template <typename ApiTypeList_, ApiId ApiId_>
 struct StackManager<bool, ApiTypeList_, ApiId_>
 {
-    static int push(lua_State* L, bool val)
+    static LG_FORCE_INLINE int push(lua_State* L, bool val)
     {
         lua_pushboolean(L, val);
         return 1;
     }
 
     template <std::size_t Index_>
-    static bool at(lua_State* L)
+    static LG_FORCE_INLINE bool at(lua_State* L)
     {
         return (bool)lua_toboolean(L, Index_);
     }
