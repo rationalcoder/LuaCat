@@ -280,7 +280,7 @@ private:
             detail::UserDataContents* uData = (detail::UserDataContents*)lua_newuserdata(L, sizeof(contents));
             *uData = contents;
 
-            lua_newtable(L); // instance's metatable
+            lua_getfield(L, 1, "_instance_mt");
             lua_getfield(L, 1, "_methods");
             // [1]: class table
             // [2]: new userdata

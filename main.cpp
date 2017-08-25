@@ -9,6 +9,7 @@ struct Foo
 {
     void test(int, int, int, int, int)
     {
+        printf("Got here\n");
     }
 };
 

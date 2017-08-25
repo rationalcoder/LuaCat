@@ -101,14 +101,14 @@ inline char const* function_name(lua_State* L)
 template <typename T_, typename ApiTypeList_, ApiId ApiId_>
 struct UserTypeStackManager
 {
+    static constexpr TypeId type_id() { return IndexOf<T_, ApiTypeList_>::value; }
+
     static LG_FORCE_INLINE int push(lua_State* L, T_* val)
     {
         UserDataContents* contents = (UserDataContents*)lua_newuserdata(L, sizeof(UserDataContents));
         contents->apiId = ApiId_;
-        contents->typeId = IndexOf<T_, ApiTypeList_>::value;
+        contents->typeId = type_id();
         contents->instance = val;
-
-
 
         return 1;
     }
