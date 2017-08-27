@@ -227,7 +227,6 @@ namespace detail
 enum SpecialKeys : lua_Integer
 {
     INSTANCE_METATABLE,
-    METHODS,
 };
 
 }
@@ -269,8 +268,25 @@ private:
     {
         static void export_to(lua_State* L)
         {
+            // [-3]: instance metatable
+            // [-2]: methods table
+            // [-1]: class metatable
             lua_pushcfunction(L, &call_metamethod);
             lua_setfield(L, -2, "__call");
+            lua_pushvalue(L, -2);
+            // [-4]: instance metatable
+            // [-3]: methods table
+            // [-2]: class metatable
+            // [-1]: methods table (copy)
+            lua_pushcclosure(L, &index_metamethod, 1);
+            // [-4]: instance metatable
+            // [-3]: methods table
+            // [-2]: class metatable
+            // [-1]: index metamethod
+            lua_setfield(L, -4, "__index");
+            lua_pushcfunction(L, &gc_metamethod);
+            lua_setfield(L, -4, "__gc");
+            // [-3..-1]: what we started with.
         }
 
         static int call_metamethod(lua_State* L)
@@ -295,22 +311,12 @@ private:
             detail::UserDataContents* uData = (detail::UserDataContents*)lua_newuserdata(L, sizeof(contents));
             *uData = contents;
 
+            // [1]: class table
+            // [2]: new userdata
             lua_rawgeti(L, 1, detail::SpecialKeys::INSTANCE_METATABLE);
-            lua_rawgeti(L, 1, detail::SpecialKeys::METHODS);
-            // [1]: class table
-            // [2]: new userdata
-            // [3]: instance metatable
-            // [4]: _methods table from class table
-            lua_pushcclosure(L, &index_metamethod, 1);
-            lua_setfield(L, -2, "__index");
-            lua_pushcfunction(L, &gc_metamethod);
-            lua_setfield(L, -2, "__gc");
-            // [1]: class table
-            // [2]: new userdata
-            // [3]: instance metatable
             lua_setmetatable(L, -2);
-
-            // [-1]: new userdata
+            // [1]: class table
+            // [2]: new userdata
             return 1;
         }
 
@@ -371,15 +377,26 @@ public:
         assert(ctorExportFunc_ && "Attempted to export a class without a constructor.");
 
         // [1]: API table
-        lua_newtable(L); // Class table
-        lua_newtable(L); // Metatable for the class table (need to set up the ctor)
+        lua_newtable(L); // class table
+        lua_newtable(L); // instance metatable.
+        lua_newtable(L); // instance methods table
+        lua_newtable(L); // class metatable
 
         // [1]: API table
         // [2]: class table
-        // [3]: class metatable
+        // [3]: instance metatable
+        // [4]: instance methods table
+        // [5]: class metatable
         ctorExportFunc_(L); // Export the constructor (added to the class metatable).
-        lua_setmetatable(L, -2); // Done with the class metatable, set it.
-        lua_newtable(L); // Metatable for class instances.
+        lua_setmetatable(L, 2); // Done with the class metatable, set it.
+
+        // [1]: API table
+        // [2]: class table
+        // [3]: instance metatable
+        // [4]: instance methods table
+        for (const detail::MethodExportPair& p : methodExportPairs_)
+            p.exporter(L, p.name);
+        lua_pop(L, 1); // done with methods table.
 
         // [1]: API table
         // [2]: class table
@@ -387,14 +404,8 @@ public:
         OperatorExporter::export_to(L); // Export any available operators to the instance metatable.
         lua_rawseti(L, -2, detail::SpecialKeys::INSTANCE_METATABLE);
 
-        lua_newtable(L); // methods table
-        for (const detail::MethodExportPair& p : methodExportPairs_)
-            p.exporter(L, p.name);
-
         // [1]: API table
         // [2]: class table
-        // [3]: methods table
-        lua_rawseti(L, -2, detail::SpecialKeys::METHODS);
         lua_setfield(L, -2, name_);
 
         // [1]: API table.
