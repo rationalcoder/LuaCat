@@ -322,7 +322,7 @@ private:
         //! \param L The lua_State to export to.
         //! the top of the stack.
         //!
-        static void export_to(lua_State* L)
+        static void export_to(lua_State*)
         {
         }
     };
@@ -414,13 +414,12 @@ public:
     char const* name() const { return name_; }
 
     template <typename... EnumValues_>
-    void add_values(EnumValues_... values)
+    void add_values(EnumValues_...)
     {
     }
 
-    void export_to(lua_State* L) const
+    void export_to(lua_State*) const
     {
-        printf("Exporting enum: %s\n", name_);
     }
 
 private:
@@ -475,7 +474,7 @@ private:
     template <typename Type_>
     using ExporterFor = typename detail::TypeFinder<Type_, TypeExporters_...>::Type;
 
-    using TypeSet = detail::TypeSet<typename TypeExporters_::Type...>;
+    using TypeSet = detail::TypeList<typename TypeExporters_::Type...>;
 
 public:
     ExporterSet(std::tuple<TypeExporters_...>&& exporters)
@@ -529,7 +528,7 @@ public:
     auto set_types(Wrappers_... wrappers) -> ExporterSet<TypeExporter<ApiId_, detail::IndexOf<Wrappers_, Wrappers_...>::value,
                                                                       typename Wrappers_::Type,
                                                                       typename Wrappers_::Factory,
-                                                                      detail::TypeSet<typename Wrappers_::Type...>,
+                                                                      detail::TypeList<typename Wrappers_::Type...>,
                                                                       Wrappers_>...>&
     {
         delete exporterSet_;
@@ -537,14 +536,14 @@ public:
         auto exporterTuple = std::make_tuple(TypeExporter<ApiId_, detail::IndexOf<Wrappers_, Wrappers_...>::value,
                                                           typename Wrappers_::Type,
                                                           typename Wrappers_::Factory,
-                                                          detail::TypeSet<typename Wrappers_::Type...>,
+                                                          detail::TypeList<typename Wrappers_::Type...>,
                                                           Wrappers_>(wrappers.name())...);
 
         // This hurts, but it is necessary unless there is a substantial refactoring.
         auto* temp = new ExporterSet<TypeExporter<ApiId_, detail::IndexOf<Wrappers_, Wrappers_...>::value,
                                       typename Wrappers_::Type,
                                       typename Wrappers_::Factory,
-                                      detail::TypeSet<typename Wrappers_::Type...>,
+                                      detail::TypeList<typename Wrappers_::Type...>,
                                       Wrappers_>...>(std::move(exporterTuple));
         exporterSet_ = temp;
         return *temp;

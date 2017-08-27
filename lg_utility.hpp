@@ -48,37 +48,85 @@ struct TypeFinder<Target_>
     using Type = void;
 };
 
-template <typename Target_, typename HeadType_, class... TailTypes_>
-struct TypeFinder<Target_, HeadType_, TailTypes_...>
+template <typename Target_, typename Head_, class... Tail_>
+struct TypeFinder<Target_, Head_, Tail_...>
 {
-    using Type = typename std::conditional<std::is_same<Target_, typename HeadType_::Type>::value,
-                 HeadType_, typename TypeFinder<Target_, TailTypes_...>::Type>::type;
+    using Type = typename std::conditional<std::is_same<Target_, typename Head_::Type>::value,
+                 Head_, typename TypeFinder<Target_, Tail_...>::Type>::type;
 };
-
-// Simple type-set for storing raw user-defined types.
 
 
 template <typename, typename...>
-struct TypeSetContains;
+struct TypeListContains;
 
 template <class Target_>
-struct TypeSetContains<Target_> : std::false_type {};
+struct TypeListContains<Target_> : std::false_type {};
 
-template <typename Target_, typename HeadType_, class... TailTypes_>
-struct TypeSetContains<Target_, HeadType_, TailTypes_...> : std::conditional<std::is_same<Target_, HeadType_>::value,
-                                                                             std::true_type,
-                                                                             TypeSetContains<HeadType_, TailTypes_...>>::type {};
+template <typename Target_, typename Head_, class... Tail_>
+struct TypeListContains<Target_, Head_, Tail_...> : std::conditional<std::is_same<Target_, Head_>::value,
+                                                                     std::true_type,
+                                                                     TypeListContains<Head_, Tail_...>>::type {};
+
+template <typename, typename...>
+struct TypeListCountIf;
+
+template <typename Predicate_>
+struct TypeListCountIf<Predicate_> : std::integral_constant<std::size_t, 0> {};
+
+template <typename Predicate_, typename Head_, typename... Tail_>
+struct TypeListCountIf<Predicate_, Head_, Tail_...> :
+        std::integral_constant<std::size_t, (std::size_t)Predicate_::template satisfied<Head_>()
+                                            + TypeListCountIf<Predicate_, Tail_...>::value> {};
+
+
+// The IndexSequence above is meant to implement the C++14 type.
+// This one is for arbitrary indices, without the Next typedef.
+template <std::size_t... Indices_>
+struct IndexList
+{
+    template <bool Cond_, std::size_t Tail_>
+    using AppendedIf = typename std::conditional<Cond_, IndexList<Indices_..., Tail_>,
+                                                        IndexList<Indices_...>>::type;
+};
+
+template <typename, typename...>
+struct TypeListIndicesMatching;
+
+template <typename TypeList_, typename Predicate_>
+struct TypeListIndicesMatching<TypeList_, Predicate_> { using List = IndexList<>; };
+
+template <typename TypeList_, typename Predicate_, typename Head_, typename... Tail_>
+struct TypeListIndicesMatching <TypeList_, Predicate_, Head_, Tail_...>
+{
+    using List = typename TypeListIndicesMatching<Predicate_, Tail_...>::List
+                 ::template AppendedIf<Predicate_::template satisfied<Head_>(),
+                                       TypeList_::template index_of<Head_>()>;
+};
+
+
+// Simple type list for storing raw user-defined types.
 
 template <typename... Types_>
-struct TypeSet
+struct TypeList
 {
+    using This = TypeList<Types_...>;
+
     template <typename T_>
-    static constexpr bool contains() { return TypeSetContains<T_, Types_...>::value; }
+    static constexpr bool contains() { return TypeListContains<T_, Types_...>::value; }
 
     template <typename T_>
     static constexpr int index_of() { return IndexOf<T_, Types_...>::value; }
 
     static constexpr std::size_t size() { return sizeof...(Types_); }
+
+    template <typename Predicate_>
+    static constexpr std::size_t count_if() { return TypeListCountIf<Predicate_, Types_...>::value; }
+
+    template <typename Predicate_>
+    static constexpr auto matching_indices() -> typename TypeListIndicesMatching<This, Predicate_, Types_...>::List
+    {
+        return typename TypeListIndicesMatching<This, Predicate_, Types_...>::List{};
+    }
 };
 
 template <typename Any_>

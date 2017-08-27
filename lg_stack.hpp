@@ -97,12 +97,29 @@ inline char const* function_name(lua_State* L)
     return debug.name;
 }
 
+template <std::size_t Head_, std::size_t... Tail_>
+struct InIndexList
+{
+    static constexpr LG_FORCE_INLINE bool result(TypeId id)
+    {
+        return id == Head_ || IndexList<Tail_...>::result(id);
+    }
+};
+
+template <std::size_t Head_>
+struct InIndexList<Head_>
+{
+    static constexpr LG_FORCE_INLINE bool result(TypeId id) { return id == Head_; }
+};
+
 
 template <typename T_, typename ApiTypeList_, ApiId ApiId_>
-struct UserTypeStackManager
+class UserTypeStackManager
 {
-    static constexpr TypeId type_id() { return IndexOf<T_, ApiTypeList_>::value; }
+private:
+    static constexpr TypeId type_id() { return ApiTypeList_::template index_of<T_>(); }
 
+public:
     static LG_FORCE_INLINE int push(lua_State* L, T_* val)
     {
         UserDataContents* contents = (UserDataContents*)lua_newuserdata(L, sizeof(UserDataContents));
@@ -110,13 +127,46 @@ struct UserTypeStackManager
         contents->typeId = type_id();
         contents->instance = val;
 
+        // All method wrappers that wrap methods that return pointers to other API types
+        // are expected to have the respective type's instance metatable as its first upvalue.
+        lua_pushvalue(L, lua_upvalueindex(1));
+        lua_setmetatable(L, -2);
+
         return 1;
     }
-
     template <std::size_t Index_>
     static LG_FORCE_INLINE T_* at(lua_State* L)
     {
-        return nullptr;
+        UserDataContents* contents = (UserDataContents*)lua_touserdata(L, Index_);
+        if (contents == nullptr) luaL_argerror(L, Index_, "userdata expected");
+        if (contents->apiId != ApiId_) luaL_argerror(L, Index_, "type isn't from this API");
+
+        TypeId typeId = contents->typeId;
+        if (typeId != type_id() && !is_derived(typeId)) luaL_argerror(L, Index_, "wrong type");
+
+        return (T_*)contents->instance;
+    }
+
+private:
+    struct IsDerived
+    {
+        template <typename PossiblyDerived_>
+        static constexpr bool satisfied() { return std::is_base_of<T_, PossiblyDerived_>::value; }
+    };
+
+    // The idea here is to generate an if statement like if (id == 0 || id == 5 || etc.)
+
+    static LG_FORCE_INLINE bool is_derived(TypeId id)
+    {
+        using DerivedTypeIdList = decltype(ApiTypeList_::template matching_indices<IsDerived>());
+        return in_list(DerivedTypeIdList{}, id);
+    }
+
+    template <std::size_t... Indices_>
+    static LG_FORCE_INLINE bool in_list(IndexList<Indices_...>, TypeId id)
+    {
+        if (sizeof...(Indices_) == 0) return false;
+        return InIndexList<Indices_...>::result(id);
     }
 };
 

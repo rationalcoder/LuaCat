@@ -1,6 +1,13 @@
 #ifndef LG_COMMON_HPP
 #define LG_COMMON_HPP
 
+// Avoid all the extra includes.
+#ifdef NDEBUG
+    #define assert(expr) do {} while (false)
+#else
+    #include <cassert>
+#endif
+
 #define LUA_COMPAT_APIINTCASTS
 #include <lua.hpp>
 
@@ -18,22 +25,12 @@
 
 namespace lg
 {
+
 // cstdint is more code than this entire library...
 using ApiId = unsigned char;
+// Ideally, this is uint16_t. When it isn't, we can just static assert or something
+// if the user manages to put more than UINT16_MAX types in an API...
 using TypeId = unsigned short;
-
-namespace detail
-{
-
-// TODO
-
-template <ApiId ApiId_, TypeId TypeId_>
-constexpr void* metatable_registry_index() { return (void*)1; }
-
-template <ApiId ApiId_, TypeId TypeId_>
-LG_FORCE_INLINE void push_metatable_of(lua_State*) {}
-
-} // namespace detail
 
 } // namespace lg
 
