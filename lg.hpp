@@ -17,11 +17,9 @@ namespace detail
 template <ApiId ApiId_,
           TypeId ClassId_,
           typename Class_,
-          typename Pointer_,
           size_t NumArgs_>
 struct MethodCallWrapperBase
 {
-    using Pointer = Pointer_;
     static constexpr size_t num_expanded_args() { return NumArgs_ + 1; } // +1 for the instance.
 
     //! Grabs the instance pointer and does common error checking.
@@ -46,17 +44,22 @@ template <ApiId ApiId_,
           typename Result_,
           typename Class_,
           typename... Args_>
-struct MethodCallWrapper : MethodCallWrapperBase<ApiId_, ClassId_, Class_, Result_(Class_::*)(Args_...), sizeof...(Args_)>
+struct MethodCallWrapper : MethodCallWrapperBase<ApiId_, ClassId_, Class_, sizeof...(Args_)>
 {
-    using Base = MethodCallWrapperBase<ApiId_, ClassId_, Class_, Result_(Class_::*)(Args_...), sizeof...(Args_)>;
+    using Base = MethodCallWrapperBase<ApiId_, ClassId_, Class_, sizeof...(Args_)>;
+    using Pointer = Result_(Class_::*)(Args_...);
 
-    template <typename Base::Pointer Func_>
+    // Note: we can't pass the pointer type to the base class, typedef it, and use it here
+    // due to a bug in MSVC; you und up with "cannot convert overloaded-function to lua_CFunction" errors,
+    // presumably b/c it's just too much type indirection for it to handle.
+
+    template <Pointer Func_>
     static int call(lua_State* L)
     {
         return call_impl<Func_>(L, typename detail::BuildIndexSequence<sizeof...(Args_)>::Type{});
     }
 
-    template <typename Base::Pointer Func_, std::size_t... Indices_>
+    template <Result_(Class_::*Func_)(Args_...), std::size_t... Indices_>
     static int call_impl(lua_State* L, detail::IndexSequence<Indices_...>)
     {
         Class_* instance = Base::instance(L);
@@ -70,18 +73,19 @@ template <ApiId ApiId_,
           typename Class_,
           typename... Args_>
 struct MethodCallWrapper<ApiId_, ClassId_, TypeSet_, void, Class_, Args_...>
-       : MethodCallWrapperBase<ApiId_, ClassId_, Class_, void(Class_::*)(Args_...), sizeof...(Args_)>
+       : MethodCallWrapperBase<ApiId_, ClassId_, Class_, sizeof...(Args_)>
 {
-    using Base = MethodCallWrapperBase<ApiId_, ClassId_, Class_, void(Class_::*)(Args_...), sizeof...(Args_)>;
+    using Base = MethodCallWrapperBase<ApiId_, ClassId_, Class_, sizeof...(Args_)>;
+    using Pointer = void(Class_::*)(Args_...);
 
-    template <typename Base::Pointer Func_>
+    template <Pointer Func_>
     static int call(lua_State* L)
     {
         call_impl<Func_>(L, typename detail::BuildIndexSequence<sizeof...(Args_)>::Type{});
         return 0;
     }
 
-    template <typename Base::Pointer Func_, std::size_t... Indices_>
+    template <Pointer Func_, std::size_t... Indices_>
     static void call_impl(lua_State* L, detail::IndexSequence<Indices_...>)
     {
         Class_* instance = Base::instance(L);
@@ -217,6 +221,17 @@ struct EnumValue
     T_ value;
 };
 
+namespace detail
+{
+
+enum SpecialKeys : lua_Integer
+{
+    INSTANCE_METATABLE,
+    METHODS,
+};
+
+}
+
 template <ApiId ApiId_,
           TypeId TypeId_,
           typename Type_,
@@ -280,8 +295,8 @@ private:
             detail::UserDataContents* uData = (detail::UserDataContents*)lua_newuserdata(L, sizeof(contents));
             *uData = contents;
 
-            lua_getfield(L, 1, "_instance_mt");
-            lua_getfield(L, 1, "_methods");
+            lua_rawgeti(L, 1, detail::SpecialKeys::INSTANCE_METATABLE);
+            lua_rawgeti(L, 1, detail::SpecialKeys::METHODS);
             // [1]: class table
             // [2]: new userdata
             // [3]: instance metatable
@@ -370,7 +385,7 @@ public:
         // [2]: class table
         // [3]: instance metatable
         OperatorExporter::export_to(L); // Export any available operators to the instance metatable.
-        lua_setfield(L, -2, "_instance_mt");
+        lua_rawseti(L, -2, detail::SpecialKeys::INSTANCE_METATABLE);
 
         lua_newtable(L); // methods table
         for (const detail::MethodExportPair& p : methodExportPairs_)
@@ -379,7 +394,7 @@ public:
         // [1]: API table
         // [2]: class table
         // [3]: methods table
-        lua_setfield(L, -2, "_methods");
+        lua_rawseti(L, -2, detail::SpecialKeys::METHODS);
         lua_setfield(L, -2, name_);
 
         // [1]: API table.
