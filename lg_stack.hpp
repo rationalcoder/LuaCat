@@ -40,15 +40,16 @@ struct is_user_type : std::conditional<ApiTypeList_::template contains<typename 
                                        std::true_type>::type {};
 
 template <typename T_, typename ApiTypeList_, ApiId ApiId_>
-struct UserTypeStackManager;
+class UserTypeStackManager;
 
 //! StackManager base for types that aren't valid user types for whatever reason.
 //! This also serves as a good place to document the two functions that define a StackManager,
 //! since they need to be present here to make sure that eroneous errors are deferred to link-time.
 //!
 template <typename T_>
-struct UknownTypeStackManager
+class UknownTypeStackManager
 {
+public:
     // TODO: make two of these to report the different possible errors.
     static_assert(detail::TypeDependentFalse<T_>::value, "No Lua StackManager defined for one or more of your types.");
 
@@ -84,8 +85,8 @@ struct StackManager : std::conditional<is_user_type<T_, ApiTypeList_>::value,
 struct UserDataContents
 {
     void* instance = nullptr;
-    ApiId typeId = 0;
-    TypeId apiId = 0;
+    TypeId typeId = 0;
+    ApiId apiId = 0;
 };
 
 inline char const* function_name(lua_State* L)

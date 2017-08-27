@@ -1,13 +1,7 @@
 #ifndef LG_COMMON_HPP
 #define LG_COMMON_HPP
 
-// Avoid all the extra includes.
-#ifdef NDEBUG
-    #define assert(expr) do {} while (false)
-#else
-    #include <cassert>
-#endif
-
+#include <cassert>
 #define LUA_COMPAT_APIINTCASTS
 #include <lua.hpp>
 
