@@ -432,7 +432,7 @@ public:
     static constexpr TypeId type_id() { return TypeId_; }
 
 public:
-    TypeExporter(char const* name)
+    explicit TypeExporter(char const* name)
         : name_(name)
     {}
 
