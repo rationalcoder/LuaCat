@@ -109,7 +109,7 @@ template <typename PointerType_, PointerType_ Pointer_>
 class Method
 {
 public:
-    Method(char const* name)
+    explicit Method(char const* name)
         : name_(name)
     {}
 
@@ -179,7 +179,7 @@ public:
     using Factory = Factory_;
 
 public:
-    Class(char const* name)
+    explicit Class(char const* name)
         : name_(name)
     {}
 
@@ -203,7 +203,7 @@ public:
     using Factory = Factory_;
 
 public:
-    Enum(char const* name)
+    explicit Enum(char const* name)
         : name_(name)
     {}
 
@@ -348,7 +348,7 @@ private:
     };
 
 public:
-    TypeExporter(char const* name)
+    explicit TypeExporter(char const* name)
         : name_(name)
     {}
 
@@ -533,7 +533,7 @@ template <ApiId ApiId_>
 class Api
 {
 public:
-    Api(char const* name)
+    explicit Api(char const* name)
         : name_(name), exporterSet_(nullptr)
     {}
 
