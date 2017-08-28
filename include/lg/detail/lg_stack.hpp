@@ -3,8 +3,8 @@
 
 #include <cstdint>
 #include <type_traits>
-#include "lg_common.hpp"
-#include "lg_utility.hpp"
+#include <lg/detail/lg_common.hpp>
+#include <lg/detail/lg_utility.hpp>
 
 //! \file
 //! \brief Handles interaction with the lua stack.

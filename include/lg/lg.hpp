@@ -2,9 +2,8 @@
 #define LG_HPP
 
 #include <vector>
-#include <cassert>
 #include <tuple>
-#include "lg_stack.hpp"
+#include <lg/detail/lg_stack.hpp>
 
 #define LG_METHOD(name, ptr) lg::Method<decltype(ptr), ptr>(name)
 
@@ -50,7 +49,7 @@ struct MethodCallWrapper : MethodCallWrapperBase<ApiId_, ClassId_, Class_, sizeo
     using Pointer = Result_(Class_::*)(Args_...);
 
     // Note: we can't pass the pointer type to the base class, typedef it, and use it here
-    // due to a bug in MSVC; you und up with "cannot convert overloaded-function to lua_CFunction" errors,
+    // due to a bug in MSVC; you end up with "cannot convert overloaded-function to lua_CFunction" errors,
     // presumably b/c it's just too much type indirection for it to handle.
 
     template <Pointer Func_>

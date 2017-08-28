@@ -1,5 +1,5 @@
 #include <cstdio>
-#include "lg.hpp"
+#include <lg/lg.hpp>
 
 using namespace std;
 
