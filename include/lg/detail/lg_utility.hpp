@@ -1,9 +1,12 @@
 #ifndef LG_UTILITY_HPP
 #define LG_UTILITY_HPP
 #include <type_traits>
+#include <lg/detail/lg_common.hpp>
 
 namespace lg
 {
+
+// Meta-programming utilities.
 namespace detail
 {
 
@@ -132,8 +135,32 @@ struct TypeList
 template <typename Any_>
 struct TypeDependentFalse : std::false_type {};
 
+} // namespace detail
+
+
+// Containers
+namespace detail
+{
+
+// The default size is int32_t b/c you shouldn't be storing anything
+// over uint16_t in a dynamic array.
+template <typename T_, typename Size_ = int32_t>
+class DynamicArray
+{
+public:
+    LG_FORCE_INLINE Size_ size() const { return size_; }
+
+    LG_FORCE_INLINE T_* data() { return data_; }
+    LG_FORCE_INLINE const T_* data() const { return data_; }
+    LG_FORCE_INLINE const T_* const_data() const { return data_; }
+
+private:
+    T_* data_;
+    Size_ size_;
+};
 
 } // namespace detail
+
 } // namespace lg
 
 #endif // LG_UTILITY_HPP
