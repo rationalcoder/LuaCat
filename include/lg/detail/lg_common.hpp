@@ -22,10 +22,7 @@
 namespace lg
 {
 
-// cstdint is more code than this entire library...
 using ApiId = uint8_t;
-// Ideally, this is uint16_t. When it isn't, we can just static assert or something
-// if the user manages to put more than UINT16_MAX types in an API...
 using TypeId = uint16_t;
 
 // uint8_t isn't guaranteed to be a char type, making type punning to it UB.

@@ -22,20 +22,32 @@ public:
     GlobalStorage& operator=(const GlobalStorage&) = delete;
 
 public:
-    void add_entry(ApiId id, uint32_t numTypes)
+    void add_api_entry(ApiId id, uint16_t numTypes, uint16_t numMetatableTypes)
     {
-        expand_if_necessary(id, numTypes);
+        std::size_t apiIndex = id+1;
+        apiNamesBuffer_.reserve_initialized(apiIndex);
+        apiNamesBuffer_[i].reserve_initialized(numTypes);
+
+        apiTypeMetatablesBuffer_.reserve_initialized(numMetatableTypes, LUA_REFNIL);
+        apiTypeMetatablesBuffer_[apiIndex];
     }
 
-    const char* const* api_names_at(ApiId) {}
-    TypeId api_metatables_at(ApiId) {}
+    const char** api_names_at(ApiId id)
+    {
+        return apiNamesBuffer_[id].data();
+    }
+
+    lua_Integer* api_metatables_at(ApiId id)
+    {
+        return apiTypeMetatablesBuffer_[id].data();
+    }
 
 private:
     GlobalStorage() = default;
 
-    LG_FORCE_INLINE void expand_if_necessary(ApiId, uint32_t) {}
-
 private:
+    lg::detail::DynamicArray<lg::detail::DynamicArray<const char*>> apiNamesBuffer_;
+    lg::detail::DynamicArray<lg::detail::DynamicArray<lua_Integer>> apiTypeMetatablesBuffer_;
 };
 
 } // namespace detail

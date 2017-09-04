@@ -226,6 +226,7 @@ namespace detail
 enum SpecialKeys : lua_Integer
 {
     INSTANCE_METATABLE,
+    TYPE_NAMES
 };
 
 }
@@ -361,12 +362,12 @@ public:
     }
 
     template <typename... Methods_>
-    void add_methods(Methods_... method)
+    void add_methods(Methods_... methods)
     {
         methodExportPairs_.reserve(sizeof...(Methods_));
 
         using Expand = int[];
-        Expand{(methodExportPairs_.emplace_back(method.name(), method.template export_to<ApiId_, TypeId_, TypeSet>), 0)...};
+        Expand{(methodExportPairs_.emplace_back(methods.name(), methods.template export_to<ApiId_, TypeId_, TypeSet>), 0)...};
     }
 
     void export_to(lua_State* L) const
@@ -493,7 +494,7 @@ struct ExporterCaller<0>
 } // namespace detail
 
 template <typename... TypeExporters_>
-class ExporterSet final: public detail::ExporterSetBase
+class ExporterSet final : public detail::ExporterSetBase
 {
 private:
     template <typename Type_>
@@ -621,8 +622,5 @@ auto enum_value(char const* name, T_ value) -> lg::EnumValue<T_>
 }
 
 } // namespace lg
-
-#undef STACK_CHECK
-#undef ERROR_WITH_LOCATION
 
 #endif // LG_HPP

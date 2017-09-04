@@ -142,25 +142,182 @@ struct TypeDependentFalse : std::false_type {};
 namespace detail
 {
 
+template <typename Size_, uint8_t Factor_>
+struct ArrayTraits
+{
+    using Size = Size_;
+    constexpr uint8_t factor() { return Factor_; }
+};
+
+using DefaultArrayTraits = ArrayTraits<int32_t, 2>;
+
 // The default size is int32_t b/c you shouldn't be storing anything
-// over uint16_t in a dynamic array.
-template <typename T_, typename Size_ = int32_t>
+// over uint16_t in a dynamic array. It takes std::size_t in its interface
+// for consistency at call sites.
+template <typename T_, typename ArrayTraits_ = DefaultArrayTraits>
 class DynamicArray
 {
 public:
-    LG_FORCE_INLINE Size_ size() const { return size_; }
+    using Traits = ArrayTraits_;
+
+private:
+    using Size = typename ArrayTraits_::Size;
+
+public:
+    DynamicArray(std::size_t startingSize = 0)
+        : data_(nullptr), size_(0)
+    {
+        if (startingSize == 0) return;
+
+        data_ = malloc(startingSize);
+    }
+
+    DynamicArray(DynamicArray& other)
+    {
+        Size size = other.size_;
+        Size capactity = other.capacity_;
+
+        size_ = size;
+        capacity_ = capactity;
+        data_ = malloc(capactity);
+
+        T_* otherData = other.data_;
+        for (Size i = 0; i < size; i++)
+            data_[i] = otherData[i];
+    }
+
+    DynamicArray(DynamicArray&& other)
+    {
+        data_ = other.data_;
+        capacity_ = other.capacity_;
+        size_ = other.size_;
+
+        other.data_ = nullptr;
+    }
+
+    ~DynamicArray() { free(data_); }
+
+    DynamicArray& operator=(DynamicArray& other)
+    {
+        this->~DynamicArray();
+        new (this) DynamicArray(other);
+    }
+
+    DynamicArray& operator=(DynamicArray&& other)
+    {
+        this->~DynamicArray();
+        new (this) DynamicArray(other);
+    }
+
+    LG_FORCE_INLINE std::size_t size() const { return (std::size_t)size_; }
 
     LG_FORCE_INLINE T_* data() { return data_; }
     LG_FORCE_INLINE const T_* data() const { return data_; }
     LG_FORCE_INLINE const T_* const_data() const { return data_; }
 
+    LG_FORCE_INLINE T_& operator[](std::size_t index) { return data_[index]; }
+    LG_FORCE_INLINE const T_& operator[](std::size_t index) const { return data_[index]; }
+
+    LG_FORCE_INLINE void reserve(std::size_t numElements)
+    {
+        Size requiredCapacity = (Size)(numElements * sizeof(T_));
+        Size currentCapacity = capacity_;
+        if (currentCapacity >= requiredCapacity) return;
+
+        data_ = (T_*)realloc(data_, requiredCapacity);
+        capacity_ = requiredCapacity;
+    }
+
+    LG_FORCE_INLINE void reserve_initialized(std::size_t numElements)
+    {
+        Size requiredCapacity = (Size)(numElements * sizeof(T_));
+        Size currentCapacity = capacity_;
+        if (currentCapacity >= requiredCapacity) return;
+
+        data_ = (T_*)realloc(data_, requiredCapacity);
+        capacity_ = requiredCapacity;
+
+        Size oldSize = size_;
+        size_ = numElements;
+        for (Size i = 0; i < numElements - oldSize; i++)
+            new (&data_[i]) T_();
+    }
+
+    LG_FORCE_INLINE void reserve_initialized(std::size_t numElements, const T_& val)
+    {
+        Size requiredCapacity = (Size)(numElements * sizeof(T_));
+        Size currentCapacity = capacity_;
+        if (currentCapacity >= requiredCapacity) return;
+
+        data_ = (T_*)realloc(data_, requiredCapacity);
+        capacity_ = requiredCapacity;
+
+        Size oldSize = size_;
+        size_ = numElements;
+        for (Size i = 0; i < numElements - oldSize; i++)
+            new (&data_[i]) T_(val);
+    }
+
+    LG_FORCE_INLINE void add_by_reference(const T_& t)
+    {
+        Size currentCapacity = capacity_;
+        Size requiredCapacity = currentCapacity + sizeof(T_);
+        if (requiredCapacity <= currentCapacity) {
+            new (&data_[size_++]) T_(t);
+            return;
+        }
+
+        data_ = realloc(data_, currentCapacity * ArrayTraits_::factor());
+        new (&data_[size_++]) T_(t);
+    }
+
+    LG_FORCE_INLINE void add_by_reference(const T_&& t)
+    {
+        Size currentCapacity = capacity_;
+        Size requiredCapacity = currentCapacity + sizeof(T_);
+        if (requiredCapacity <= currentCapacity) {
+            new (&data_[size_++]) T_(t);
+            return;
+        }
+
+        data_ = realloc(data_, currentCapacity * ArrayTraits_::factor());
+        new (&data_[size_++]) T_(t);
+    }
+
+    LG_FORCE_INLINE void add_by_value(T_ t)
+    {
+        Size currentCapacity = capacity_;
+        Size requiredCapacity = currentCapacity + sizeof(T_);
+        if (requiredCapacity <= currentCapacity) {
+            data_[size_++] = t;
+            return;
+        }
+
+        data_ = realloc(data_, currentCapacity * ArrayTraits_::factor());
+        data_[size_++] = t;
+    }
+
+    template <typename... Args_>
+    LG_FORCE_INLINE void emplace(Args_&&... args)
+    {
+        Size currentCapacity = capacity_;
+        Size requiredCapacity = currentCapacity + sizeof(T_);
+        if (requiredCapacity <= currentCapacity) {
+            new (data_ + size_++) T_(args...);
+            return;
+        }
+
+        data_ = realloc(data_, currentCapacity * ArrayTraits_::factor());
+        new (data_ + size_++) T_(args...);
+    }
+
 private:
     T_* data_;
-    Size_ size_;
+    Size size_;
+    Size capacity_;
 };
 
 } // namespace detail
-
 } // namespace lg
 
 #endif // LG_UTILITY_HPP
