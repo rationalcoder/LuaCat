@@ -339,7 +339,7 @@ private:
 
     struct OperatorExporter
     {
-        //! Exports all available operators to the metatable on
+        //! Exports all available operators to the metatable on top of the stack
         //! \param L The lua_State to export to.
         //! the top of the stack.
         //!

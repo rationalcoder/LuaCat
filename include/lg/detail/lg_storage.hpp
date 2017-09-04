@@ -32,7 +32,7 @@ public:
         apiTypeMetatablesBuffer_[apiIndex];
     }
 
-    const char** api_names_at(ApiId id)
+    char const** api_names_at(ApiId id)
     {
         return apiNamesBuffer_[id].data();
     }
@@ -46,7 +46,7 @@ private:
     GlobalStorage() = default;
 
 private:
-    lg::detail::DynamicArray<lg::detail::DynamicArray<const char*>> apiNamesBuffer_;
+    lg::detail::DynamicArray<lg::detail::DynamicArray<char const*>> apiNamesBuffer_;
     lg::detail::DynamicArray<lg::detail::DynamicArray<lua_Integer>> apiTypeMetatablesBuffer_;
 };
 
