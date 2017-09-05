@@ -242,7 +242,7 @@ template <ApiId ApiId_,
 class TypeExporter
 {
     static_assert(detail::TypeDependentFalse<TypeWrapper_>::value,
-    "\n\n(LG): No TypeExporter specialization found for that type wrapper. Check your call to lc::Api::set_types(). \n\n");
+    "\n\n(LC): No TypeExporter specialization found for that type wrapper. Check your call to lc::Api::set_types(). \n\n");
 };
 
 template <ApiId ApiId_,
