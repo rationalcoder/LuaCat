@@ -1,13 +1,13 @@
-#ifndef LG_HPP
-#define LG_HPP
+#ifndef LC_HPP
+#define LC_HPP
 
 #include <vector>
 #include <tuple>
-#include <lg/detail/lg_stack.hpp>
+#include <lc/detail/lc_stack.hpp>
 
-#define LG_METHOD(name, ptr) lg::Method<decltype(ptr), ptr>(name)
+#define LC_METHOD(name, ptr) lc::Method<decltype(ptr), ptr>(name)
 
-namespace lg
+namespace lc
 {
 
 namespace detail
@@ -59,7 +59,7 @@ struct MethodCallWrapper : MethodCallWrapperBase<ApiId_, ClassId_, Class_, sizeo
     }
 
     template <Result_(Class_::*Func_)(Args_...), std::size_t... Indices_>
-    static int LG_FORCE_INLINE call_impl(lua_State* L, detail::IndexSequence<Indices_...>)
+    static int LC_FORCE_INLINE call_impl(lua_State* L, detail::IndexSequence<Indices_...>)
     {
         Class_* instance = Base::instance(L);
         return StackManager<Result_, TypeSet_, ApiId_>::push(L, (instance->*Func_)(
@@ -86,7 +86,7 @@ struct MethodCallWrapper<ApiId_, ClassId_, TypeSet_, void, Class_, Args_...>
     }
 
     template <Pointer Func_, std::size_t... Indices_>
-    static LG_FORCE_INLINE void call_impl(lua_State* L, detail::IndexSequence<Indices_...>)
+    static LC_FORCE_INLINE void call_impl(lua_State* L, detail::IndexSequence<Indices_...>)
     {
         Class_* instance = Base::instance(L);
         (instance->*Func_)(detail::StackManager<Args_, TypeSet_, ApiId_>::template at<Indices_ + 2>(L)...);
@@ -242,7 +242,7 @@ template <ApiId ApiId_,
 class TypeExporter
 {
     static_assert(detail::TypeDependentFalse<TypeWrapper_>::value,
-    "\n\n(LG): No TypeExporter specialization found for that type wrapper. Check your call to lg::Api::set_types(). \n\n");
+    "\n\n(LG): No TypeExporter specialization found for that type wrapper. Check your call to lc::Api::set_types(). \n\n");
 };
 
 template <ApiId ApiId_,
@@ -250,12 +250,12 @@ template <ApiId ApiId_,
           typename Type_,
           typename Factory_,
           typename TypeSet_>
-class TypeExporter<ApiId_, TypeId_, Type_, Factory_, TypeSet_, lg::Class<Type_, Factory_>>
+class TypeExporter<ApiId_, TypeId_, Type_, Factory_, TypeSet_, lc::Class<Type_, Factory_>>
 {
 public:
     using Type = Type_;
     using Factory = Factory_;
-    using Wrapper = lg::Class<Type_, Factory_>;
+    using Wrapper = lc::Class<Type_, Factory_>;
     using TypeSet = TypeSet_;
 
     static constexpr ApiId api_id() { return ApiId_; }
@@ -360,7 +360,7 @@ public:
     char const* name() const { return name_; }
 
     template <typename... Args_>
-    void set_constructor(lg::Constructor<Args_...>)
+    void set_constructor(lc::Constructor<Args_...>)
     {
         ctorExportFunc_ = &CtorExporter<Args_...>::export_to;
     }
@@ -435,12 +435,12 @@ template <ApiId ApiId_,
           typename Type_,
           typename Factory_,
           typename TypeSet_>
-class TypeExporter<ApiId_, TypeId_, Type_, Factory_, TypeSet_, lg::Enum<Type_, Factory_>>
+class TypeExporter<ApiId_, TypeId_, Type_, Factory_, TypeSet_, lc::Enum<Type_, Factory_>>
 {
 public:
     using Type = Type_;
     using Factory = Factory_;
-    using Wrapper = lg::Enum<Type_, Factory_>;
+    using Wrapper = lc::Enum<Type_, Factory_>;
 
     static constexpr ApiId api_id() { return ApiId_; }
     static constexpr TypeId type_id() { return TypeId_; }
@@ -491,14 +491,14 @@ template <std::size_t Index_>
 struct ExporterCaller
 {
     template <typename Tuple_>
-    static LG_FORCE_INLINE void export_meta(const Tuple_& t, lua_State* L)
+    static LC_FORCE_INLINE void export_meta(const Tuple_& t, lua_State* L)
     {
         std::get<Index_>(t).export_meta(L);
         ExporterCaller<Index_-1>::export_meta(t, L);
     }
 
     template <typename Tuple_>
-    static LG_FORCE_INLINE void export_other(const Tuple_& t, lua_State* L)
+    static LC_FORCE_INLINE void export_other(const Tuple_& t, lua_State* L)
     {
         std::get<Index_>(t).export_other(L);
         ExporterCaller<Index_-1>::export_other(t, L);
@@ -509,13 +509,13 @@ template <>
 struct ExporterCaller<0>
 {
     template <typename Tuple_>
-    static LG_FORCE_INLINE void export_meta(const Tuple_& t, lua_State* L)
+    static LC_FORCE_INLINE void export_meta(const Tuple_& t, lua_State* L)
     {
         std::get<0>(t).export_meta(L);
     }
 
     template <typename Tuple_>
-    static LG_FORCE_INLINE void export_other(const Tuple_& t, lua_State* L)
+    static LC_FORCE_INLINE void export_other(const Tuple_& t, lua_State* L)
     {
         std::get<0>(t).export_other(L);
     }
@@ -651,11 +651,11 @@ auto id() -> UniqueId<Id_>
 }
 
 template <typename T_>
-auto enum_value(char const* name, T_ value) -> lg::EnumValue<T_>
+auto enum_value(char const* name, T_ value) -> lc::EnumValue<T_>
 {
-    return lg::EnumValue<T_>{name, value};
+    return lc::EnumValue<T_>{name, value};
 }
 
-} // namespace lg
+} // namespace lc
 
-#endif // LG_HPP
+#endif // LC_HPP

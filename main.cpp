@@ -1,5 +1,5 @@
 #include <cstdio>
-#include <lg/lg.hpp>
+#include <lc/lc.hpp>
 
 using namespace std;
 
@@ -29,23 +29,23 @@ enum class TestEnum2
 
 int main()
 {
-    auto api = lg::make_api("TestApi", lg::id<0>());
-    auto& types = api.set_types(lg::Class<Foo, lg::HeapFactory<Foo>>("Foo"),
-                                lg::Enum<TestEnum1>("TestEnum1"),
-                                lg::Enum<TestEnum2>("TestEnum2"));
+    auto api = lc::make_api("TestApi", lc::id<0>());
+    auto& types = api.set_types(lc::Class<Foo, lc::HeapFactory<Foo>>("Foo"),
+                                lc::Enum<TestEnum1>("TestEnum1"),
+                                lc::Enum<TestEnum2>("TestEnum2"));
     auto& foo = types.at<Foo>();
 
-    foo.set_constructor(lg::Constructor<>());
+    foo.set_constructor(lc::Constructor<>());
     foo.add_methods(
-        LG_METHOD("test", &Foo::test)
+        LC_METHOD("test", &Foo::test)
     );
 
     auto& testEnum = types.at<TestEnum1>();
 
     testEnum.add_values(
-        lg::enum_value("ONE", TestEnum1::ONE),
-        lg::enum_value("TWO", TestEnum1::TWO),
-        lg::enum_value("THREE", TestEnum1::THREE)
+        lc::enum_value("ONE", TestEnum1::ONE),
+        lc::enum_value("TWO", TestEnum1::TWO),
+        lc::enum_value("THREE", TestEnum1::THREE)
     );
 
     lua_State* L = luaL_newstate();

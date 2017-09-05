@@ -1,9 +1,9 @@
-#ifndef LG_STORAGE_HPP
-#define LG_STORAGE_HPP
-#include <lg/detail/lg_common.hpp>
-#include <lg/detail/lg_utility.hpp>
+#ifndef LC_STORAGE_HPP
+#define LC_STORAGE_HPP
+#include <lc/detail/lc_common.hpp>
+#include <lc/detail/lc_utility.hpp>
 
-namespace lg
+namespace lc
 {
 namespace detail
 {
@@ -46,11 +46,11 @@ private:
     GlobalStorage() = default;
 
 private:
-    lg::detail::DynamicArray<lg::detail::DynamicArray<char const*>> apiNamesBuffer_;
-    lg::detail::DynamicArray<lg::detail::DynamicArray<lua_Integer>> apiTypeMetatablesBuffer_;
+    lc::detail::DynamicArray<lc::detail::DynamicArray<char const*>> apiNamesBuffer_;
+    lc::detail::DynamicArray<lc::detail::DynamicArray<lua_Integer>> apiTypeMetatablesBuffer_;
 };
 
 } // namespace detail
-} // namespace lg
+} // namespace lc
 
-#endif // LG_STORAGE_HPP
+#endif // LC_STORAGE_HPP

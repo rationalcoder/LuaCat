@@ -1,9 +1,9 @@
-#ifndef LG_UTILITY_HPP
-#define LG_UTILITY_HPP
+#ifndef LC_UTILITY_HPP
+#define LC_UTILITY_HPP
 #include <type_traits>
-#include <lg/detail/lg_common.hpp>
+#include <lc/detail/lc_common.hpp>
 
-namespace lg
+namespace lc
 {
 
 // Meta-programming utilities.
@@ -209,16 +209,16 @@ public:
         new (this) DynamicArray(other);
     }
 
-    LG_FORCE_INLINE std::size_t size() const { return (std::size_t)size_; }
+    LC_FORCE_INLINE std::size_t size() const { return (std::size_t)size_; }
 
-    LG_FORCE_INLINE T_* data() { return data_; }
-    LG_FORCE_INLINE const T_* data() const { return data_; }
-    LG_FORCE_INLINE const T_* const_data() const { return data_; }
+    LC_FORCE_INLINE T_* data() { return data_; }
+    LC_FORCE_INLINE const T_* data() const { return data_; }
+    LC_FORCE_INLINE const T_* const_data() const { return data_; }
 
-    LG_FORCE_INLINE T_& operator[](std::size_t index) { return data_[index]; }
-    LG_FORCE_INLINE const T_& operator[](std::size_t index) const { return data_[index]; }
+    LC_FORCE_INLINE T_& operator[](std::size_t index) { return data_[index]; }
+    LC_FORCE_INLINE const T_& operator[](std::size_t index) const { return data_[index]; }
 
-    LG_FORCE_INLINE void reserve(std::size_t numElements)
+    LC_FORCE_INLINE void reserve(std::size_t numElements)
     {
         Size requiredCapacity = (Size)(numElements * sizeof(T_));
         Size currentCapacity = capacity_;
@@ -228,7 +228,7 @@ public:
         capacity_ = requiredCapacity;
     }
 
-    LG_FORCE_INLINE void reserve_initialized(std::size_t numElements)
+    LC_FORCE_INLINE void reserve_initialized(std::size_t numElements)
     {
         Size requiredCapacity = (Size)(numElements * sizeof(T_));
         Size currentCapacity = capacity_;
@@ -243,7 +243,7 @@ public:
             new (&data_[i]) T_();
     }
 
-    LG_FORCE_INLINE void reserve_initialized(std::size_t numElements, const T_& val)
+    LC_FORCE_INLINE void reserve_initialized(std::size_t numElements, const T_& val)
     {
         Size requiredCapacity = (Size)(numElements * sizeof(T_));
         Size currentCapacity = capacity_;
@@ -258,7 +258,7 @@ public:
             new (&data_[i]) T_(val);
     }
 
-    LG_FORCE_INLINE void add_by_reference(const T_& t)
+    LC_FORCE_INLINE void add_by_reference(const T_& t)
     {
         Size currentCapacity = capacity_;
         Size requiredCapacity = currentCapacity + sizeof(T_);
@@ -271,7 +271,7 @@ public:
         new (&data_[size_++]) T_(t);
     }
 
-    LG_FORCE_INLINE void add_by_reference(const T_&& t)
+    LC_FORCE_INLINE void add_by_reference(const T_&& t)
     {
         Size currentCapacity = capacity_;
         Size requiredCapacity = currentCapacity + sizeof(T_);
@@ -284,7 +284,7 @@ public:
         new (&data_[size_++]) T_(t);
     }
 
-    LG_FORCE_INLINE void add_by_value(T_ t)
+    LC_FORCE_INLINE void add_by_value(T_ t)
     {
         Size currentCapacity = capacity_;
         Size requiredCapacity = currentCapacity + sizeof(T_);
@@ -298,7 +298,7 @@ public:
     }
 
     template <typename... Args_>
-    LG_FORCE_INLINE void emplace(Args_&&... args)
+    LC_FORCE_INLINE void emplace(Args_&&... args)
     {
         Size currentCapacity = capacity_;
         Size requiredCapacity = currentCapacity + sizeof(T_);
@@ -318,6 +318,6 @@ private:
 };
 
 } // namespace detail
-} // namespace lg
+} // namespace lc
 
-#endif // LG_UTILITY_HPP
+#endif // LC_UTILITY_HPP

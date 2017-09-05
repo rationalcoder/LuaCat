@@ -3,14 +3,14 @@
 
 #include <cstdint>
 #include <type_traits>
-#include <lg/detail/lg_common.hpp>
-#include <lg/detail/lg_utility.hpp>
+#include <lc/detail/lc_common.hpp>
+#include <lc/detail/lc_utility.hpp>
 
 //! \file
 //! \brief Handles interaction with the lua stack.
 //!
 
-namespace lg
+namespace lc
 {
 namespace detail
 {
@@ -101,7 +101,7 @@ inline char const* function_name(lua_State* L)
 template <std::size_t Head_, std::size_t... Tail_>
 struct InIndexList
 {
-    static constexpr LG_FORCE_INLINE bool result(TypeId id)
+    static constexpr LC_FORCE_INLINE bool result(TypeId id)
     {
         return id == Head_ || IndexList<Tail_...>::result(id);
     }
@@ -110,7 +110,7 @@ struct InIndexList
 template <std::size_t Head_>
 struct InIndexList<Head_>
 {
-    static constexpr LG_FORCE_INLINE bool result(TypeId id) { return id == Head_; }
+    static constexpr LC_FORCE_INLINE bool result(TypeId id) { return id == Head_; }
 };
 
 
@@ -121,7 +121,7 @@ private:
     static constexpr TypeId type_id() { return ApiTypeList_::template index_of<T_>(); }
 
 public:
-    static LG_FORCE_INLINE int push(lua_State* L, T_* val)
+    static LC_FORCE_INLINE int push(lua_State* L, T_* val)
     {
         UserDataContents* contents = (UserDataContents*)lua_newuserdata(L, sizeof(UserDataContents));
         contents->apiId = ApiId_;
@@ -136,7 +136,7 @@ public:
         return 1;
     }
     template <std::size_t Index_>
-    static LG_FORCE_INLINE T_* at(lua_State* L)
+    static LC_FORCE_INLINE T_* at(lua_State* L)
     {
         UserDataContents* contents = (UserDataContents*)lua_touserdata(L, Index_);
         if (contents == nullptr) luaL_argerror(L, Index_, "userdata expected");
@@ -157,14 +157,14 @@ private:
 
     // The idea here is to generate an if statement like if (id == 0 || id == 5 || etc.)
 
-    static LG_FORCE_INLINE bool is_derived(TypeId id)
+    static LC_FORCE_INLINE bool is_derived(TypeId id)
     {
         using DerivedTypeIdList = decltype(ApiTypeList_::template matching_indices<IsDerived>());
         return in_list(DerivedTypeIdList{}, id);
     }
 
     template <std::size_t... Indices_>
-    static LG_FORCE_INLINE bool in_list(IndexList<Indices_...>, TypeId id)
+    static LC_FORCE_INLINE bool in_list(IndexList<Indices_...>, TypeId id)
     {
         if (sizeof...(Indices_) == 0) return false;
         return InIndexList<Indices_...>::result(id);
@@ -178,14 +178,14 @@ private:
 template <typename T_>
 struct SignedIntegerManager
 {
-    static LG_FORCE_INLINE int push(lua_State* L, T_ val)
+    static LC_FORCE_INLINE int push(lua_State* L, T_ val)
     {
         lua_pushinteger(L, val);
         return 1;
     }
 
     template <std::size_t Index_>
-    static LG_FORCE_INLINE T_ at(lua_State* L)
+    static LC_FORCE_INLINE T_ at(lua_State* L)
     {
         return (T_)luaL_checkinteger(L, Index_);
     }
@@ -199,14 +199,14 @@ struct SignedIntegerManager
 template <typename T_>
 struct UnsignedIntegerManager
 {
-    static LG_FORCE_INLINE int push(lua_State* L, T_ val)
+    static LC_FORCE_INLINE int push(lua_State* L, T_ val)
     {
         lua_pushunsigned(L, val);
         return 1;
     }
 
     template <std::size_t Index_>
-    static LG_FORCE_INLINE T_ at(lua_State* L)
+    static LC_FORCE_INLINE T_ at(lua_State* L)
     {
         return (T_)luaL_checkunsigned(L, Index_);
     }
@@ -220,14 +220,14 @@ struct UnsignedIntegerManager
 template <typename T_>
 struct RealNumberManager
 {
-    static LG_FORCE_INLINE int push(lua_State* L, T_ val)
+    static LC_FORCE_INLINE int push(lua_State* L, T_ val)
     {
         lua_pushnumber(L, val);
         return 1;
     }
 
     template <std::size_t Index_>
-    static LG_FORCE_INLINE T_ at(lua_State* L)
+    static LC_FORCE_INLINE T_ at(lua_State* L)
     {
         return (T_)luaL_checknumber(L, Index_);
     }
@@ -237,14 +237,14 @@ struct RealNumberManager
 template <typename ApiTypeList_, ApiId ApiId_>
 struct StackManager<bool, ApiTypeList_, ApiId_>
 {
-    static LG_FORCE_INLINE int push(lua_State* L, bool val)
+    static LC_FORCE_INLINE int push(lua_State* L, bool val)
     {
         lua_pushboolean(L, val);
         return 1;
     }
 
     template <std::size_t Index_>
-    static LG_FORCE_INLINE bool at(lua_State* L)
+    static LC_FORCE_INLINE bool at(lua_State* L)
     {
         return (bool)lua_toboolean(L, Index_);
     }
@@ -267,6 +267,6 @@ template <typename ApiTypeList_, ApiId ApiId_> struct StackManager<uint32_t, Api
 template <typename ApiTypeList_, ApiId ApiId_> struct StackManager<uint64_t, ApiTypeList_, ApiId_> : UnsignedIntegerManager<uint64_t> {};
 
 } // end detail
-} // end lg
+} // end lc
 
 #endif // LG_MANIP_HPP
