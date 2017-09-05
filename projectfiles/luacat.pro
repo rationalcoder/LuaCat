@@ -6,11 +6,11 @@ CONFIG -= qt
 QMAKE_CXXFLAGS += -std=c++11 -Wno-missing-field-initializers -Winline -fno-rtti -fno-exceptions
 
 HEADERS += \
-           include/lg/lg.hpp \
-           include/lg/detail/lg_common.hpp \
-           include/lg/detail/lg_utility.hpp \
-           include/lg/detail/lg_stack.hpp \
-           include/lg/detail/lg_storage.hpp
+           include/lc/lc.hpp \
+           include/lc/detail/lc_common.hpp \
+           include/lc/detail/lc_utility.hpp \
+           include/lc/detail/lc_stack.hpp \
+           include/lc/detail/lc_storage.hpp
 
 SOURCES += main.cpp
 
