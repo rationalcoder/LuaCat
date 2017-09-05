@@ -106,31 +106,6 @@ auto make_call_wrapper(Result_(Class_::*)(Args_...)) -> MethodCallWrapper<ApiId_
 
 } // namespace detail
 
-template <typename PointerType_, PointerType_ Pointer_>
-class Method
-{
-public:
-    explicit Method(char const* name)
-        : name_(name)
-    {}
-
-    char const* name() const { return name_; }
-
-    template <uint32_t ApiId_, uint32_t ClassId_, typename TypeSet_>
-    static void export_to(lua_State* L, char const* name)
-    {
-        using Wrapper = decltype(detail::make_call_wrapper<ApiId_, ClassId_, TypeSet_>(Pointer_));
-
-        // TODO: lua_pushcclosure with correct metatable for methods returning class pointers.
-        // Add the function to whatever table is on top of the stack.
-        lua_pushcfunction(L, &Wrapper::template call<Pointer_>);
-        lua_setfield(L, -2, name);
-    }
-
-private:
-    char const* name_;
-};
-
 namespace detail
 {
 
@@ -149,28 +124,57 @@ struct ExportPair
 
     char const* name;
     ExportFunc_ exporter;
-
 };
 
 using MethodExportPair = ExportPair<void(*)(lua_State*, char const*)>;
 
 } // namespace detail
 
+template <typename PointerType_, PointerType_ Pointer_>
+class Method
+{
+public:
+    explicit Method(char const* name)
+        : name_(name)
+    {}
+
+    char const* name() const { return name_; }
+
+    template <ApiId ApiId_, TypeId TypeId_, typename TypeSet_>
+    static void export_to(lua_State* L, char const* name)
+    {
+        using Wrapper = decltype(detail::make_call_wrapper<ApiId_, TypeId_, TypeSet_>(Pointer_));
+
+        // TODO: lua_pushcclosure with correct metatable for methods returning class pointers.
+        // Add the function to whatever table is on top of the stack.
+        lua_pushcfunction(L, &Wrapper::template call<Pointer_>);
+        lua_setfield(L, -2, name);
+    }
+
+private:
+    char const* name_;
+};
+
 struct NullFactory {};
 
 template <typename T_, typename... CtorArgs_>
 struct HeapFactory
 {
-    static T_* make(CtorArgs_... args)
+    static LC_FORCE_INLINE T_* make(CtorArgs_... args)
     {
         return new T_(args...);
     }
 
-    static void free(T_* p)
+    static LC_FORCE_INLINE void free(T_* p)
     {
         delete p;
     }
 };
+
+template <typename... Args_>
+struct Constructor {};
+
+using DefaultConstructor = Constructor<>;
 
 template <class Type_,
           class Factory_>
@@ -190,11 +194,6 @@ public:
 private:
     char const* name_;
 };
-
-template <typename... Args_>
-struct Constructor {};
-
-using DefaultConstructor = Constructor<>;
 
 template <class Type_,
           class Factory_ = NullFactory>
@@ -221,6 +220,7 @@ struct EnumValue
     char const* name;
     T_ value;
 };
+
 
 namespace detail
 {
@@ -372,7 +372,7 @@ public:
 
         using Expand = int[];
         Expand{(methodExportPairs_.emplace_back(methods.name(),
-                methods.template export_to<ApiId_, TypeId_, TypeSet>), 0)...};
+                methods.template export_to<ApiId_, TypeId_, TypeSet_>), 0)...};
     }
 
     void export_meta(lua_State* L) const
@@ -612,15 +612,18 @@ public:
 
     void export_to(lua_State* L)
     {
-        // If the API is named, push a new table. Otherwise, just use the global table.
+        // If the API is named, push/use a new table. Otherwise, just use the global table.
         bool named = name_ && *name_;
-        if (named) lua_newtable(L);
-        else lua_pushglobaltable(L);
-
-        exporterSet_->export_to(L);
-
-        if (named) lua_setglobal(L, name_);
-        else lua_pop(L, 1);
+        if (named) {
+            lua_newtable(L);
+            exporterSet_->export_to(L);
+            lua_setglobal(L, name_);
+        }
+        else {
+            lua_pushglobaltable(L);
+            exporterSet_->export_to(L);
+            lua_pop(L, 1);
+        }
     }
 
 private:
