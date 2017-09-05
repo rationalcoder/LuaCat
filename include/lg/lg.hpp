@@ -59,10 +59,11 @@ struct MethodCallWrapper : MethodCallWrapperBase<ApiId_, ClassId_, Class_, sizeo
     }
 
     template <Result_(Class_::*Func_)(Args_...), std::size_t... Indices_>
-    static int call_impl(lua_State* L, detail::IndexSequence<Indices_...>)
+    static int LG_FORCE_INLINE call_impl(lua_State* L, detail::IndexSequence<Indices_...>)
     {
         Class_* instance = Base::instance(L);
-        return StackManager<Result_, TypeSet_, ApiId_>::push(L, (instance->*Func_)(detail::StackManager<Args_, TypeSet_, ApiId_>::template at<Indices_ + 2>(L)...));
+        return StackManager<Result_, TypeSet_, ApiId_>::push(L, (instance->*Func_)(
+               detail::StackManager<Args_, TypeSet_, ApiId_>::template at<Indices_ + 2>(L)...));
     }
 };
 
@@ -85,7 +86,7 @@ struct MethodCallWrapper<ApiId_, ClassId_, TypeSet_, void, Class_, Args_...>
     }
 
     template <Pointer Func_, std::size_t... Indices_>
-    static void call_impl(lua_State* L, detail::IndexSequence<Indices_...>)
+    static LG_FORCE_INLINE void call_impl(lua_State* L, detail::IndexSequence<Indices_...>)
     {
         Class_* instance = Base::instance(L);
         (instance->*Func_)(detail::StackManager<Args_, TypeSet_, ApiId_>::template at<Indices_ + 2>(L)...);
@@ -120,6 +121,7 @@ public:
     {
         using Wrapper = decltype(detail::make_call_wrapper<ApiId_, ClassId_, TypeSet_>(Pointer_));
 
+        // TODO: lua_pushcclosure with correct metatable for methods returning class pointers.
         // Add the function to whatever table is on top of the stack.
         lua_pushcfunction(L, &Wrapper::template call<Pointer_>);
         lua_setfield(L, -2, name);
@@ -271,7 +273,8 @@ private:
             // [-3]: instance metatable
             // [-2]: methods table
             // [-1]: class metatable
-            lua_pushcfunction(L, &call_metamethod);
+            lua_pushvalue(L, -3);
+            lua_pushcclosure(L, &call_metamethod, 1);
             lua_setfield(L, -2, "__call");
             lua_pushvalue(L, -2);
             // [-4]: instance metatable
@@ -313,13 +316,15 @@ private:
 
             // [1]: class table
             // [2]: new userdata
-            lua_rawgeti(L, 1, detail::SpecialKeys::INSTANCE_METATABLE);
+            // lua_rawgeti(L, 1, detail::SpecialKeys::INSTANCE_METATABLE);
+            lua_pushvalue(L, lua_upvalueindex(1));
             lua_setmetatable(L, -2);
             // [1]: class table
             // [2]: new userdata
             return 1;
         }
 
+        // @Optimize: the same one can be used for classes.
         static int index_metamethod(lua_State* L)
         {
             // [1]: instance userdata
@@ -341,7 +346,6 @@ private:
     {
         //! Exports all available operators to the metatable on top of the stack
         //! \param L The lua_State to export to.
-        //! the top of the stack.
         //!
         static void export_to(lua_State*)
         {
@@ -350,7 +354,7 @@ private:
 
 public:
     explicit TypeExporter(char const* name)
-        : name_(name)
+        : name_(name),  instanceMetatable_(LUA_NOREF),  methodsTable_(LUA_NOREF)
     {}
 
     char const* name() const { return name_; }
@@ -367,10 +371,11 @@ public:
         methodExportPairs_.reserve(sizeof...(Methods_));
 
         using Expand = int[];
-        Expand{(methodExportPairs_.emplace_back(methods.name(), methods.template export_to<ApiId_, TypeId_, TypeSet>), 0)...};
+        Expand{(methodExportPairs_.emplace_back(methods.name(),
+                methods.template export_to<ApiId_, TypeId_, TypeSet>), 0)...};
     }
 
-    void export_to(lua_State* L) const
+    void export_meta(lua_State* L) const
     {
         // TODO: handle this better.
         assert(name_ && *name_ && "Attempted to export a class without a name.");
@@ -394,15 +399,10 @@ public:
         // [2]: class table
         // [3]: instance metatable
         // [4]: instance methods table
-        for (const detail::MethodExportPair& p : methodExportPairs_)
-            p.exporter(L, p.name);
-        lua_pop(L, 1); // done with methods table.
-
-        // [1]: API table
-        // [2]: class table
-        // [3]: instance metatable
-        OperatorExporter::export_to(L); // Export any available operators to the instance metatable.
-        lua_rawseti(L, -2, detail::SpecialKeys::INSTANCE_METATABLE);
+        methodsTable_ = luaL_ref(L, LUA_REGISTRYINDEX);
+        // Export Lua compatible operators to the instance metatable.
+        OperatorExporter::export_to(L);
+        instanceMetatable_ = luaL_ref(L, LUA_REGISTRYINDEX);
 
         // [1]: API table
         // [2]: class table
@@ -411,9 +411,22 @@ public:
         // [1]: API table.
     }
 
+    void export_other(lua_State* L) const
+    {
+        // [1]: API table.
+        // Grab the methods table, fill it, and pop it back off.
+        lua_rawgeti(L, LUA_REGISTRYINDEX, methodsTable_);
+        for (const detail::MethodExportPair& p : methodExportPairs_)
+            p.exporter(L, p.name);
+        lua_pop(L, 1);
+        // [1]: API table.
+    }
+
 private:
     char const* name_;
     CtorExportFunc ctorExportFunc_;
+    mutable lua_Integer instanceMetatable_;
+    mutable lua_Integer methodsTable_;
     std::vector<detail::MethodExportPair> methodExportPairs_;
 };
 
@@ -444,7 +457,11 @@ public:
     {
     }
 
-    void export_to(lua_State*) const
+    void export_meta(lua_State*) const
+    {
+    }
+
+    void export_other(lua_State*) const
     {
     }
 
@@ -470,14 +487,21 @@ public:
 namespace detail
 {
 
-template <int Index_>
+template <std::size_t Index_>
 struct ExporterCaller
 {
     template <typename Tuple_>
-    static void export_to(const Tuple_& t, lua_State* L)
+    static LG_FORCE_INLINE void export_meta(const Tuple_& t, lua_State* L)
     {
-        std::get<Index_>(t).export_to(L);
-        ExporterCaller<Index_-1>::export_to(t, L);
+        std::get<Index_>(t).export_meta(L);
+        ExporterCaller<Index_-1>::export_meta(t, L);
+    }
+
+    template <typename Tuple_>
+    static LG_FORCE_INLINE void export_other(const Tuple_& t, lua_State* L)
+    {
+        std::get<Index_>(t).export_other(L);
+        ExporterCaller<Index_-1>::export_other(t, L);
     }
 };
 
@@ -485,9 +509,15 @@ template <>
 struct ExporterCaller<0>
 {
     template <typename Tuple_>
-    static void export_to(const Tuple_& t, lua_State* L)
+    static LG_FORCE_INLINE void export_meta(const Tuple_& t, lua_State* L)
     {
-        std::get<0>(t).export_to(L);
+        std::get<0>(t).export_meta(L);
+    }
+
+    template <typename Tuple_>
+    static LG_FORCE_INLINE void export_other(const Tuple_& t, lua_State* L)
+    {
+        std::get<0>(t).export_other(L);
     }
 };
 
@@ -522,7 +552,12 @@ public:
 
     virtual void export_to(lua_State* L)
     {
-        detail::ExporterCaller<sizeof...(TypeExporters_)-1>::export_to(exporters_, L);
+        // There are two phases, "meta" and "other" so that all types exporters
+        // can register their type names, metatables, etc. somewhere in the lua_State
+        // before they register things like methods that depend on API type information
+        // and metatables of other types in the API.
+        detail::ExporterCaller<sizeof...(TypeExporters_)-1>::export_meta(exporters_, L);
+        detail::ExporterCaller<sizeof...(TypeExporters_)-1>::export_other(exporters_, L);
     }
 
 private:
