@@ -29,7 +29,7 @@ enum class TestEnum2
 
 int main()
 {
-    auto api = lc::make_api("TestApi", lc::id<0>());
+    auto api = lc::make_api("TestApi");
     auto& types = api.set_types(lc::Class<Foo, lc::HeapFactory<Foo>>("Foo"),
                                 lc::Enum<TestEnum1>("TestEnum1"),
                                 lc::Enum<TestEnum2>("TestEnum2"));

@@ -58,6 +58,10 @@ struct TypeFinder<Target_, Head_, Tail_...>
                  Head_, typename TypeFinder<Target_, Tail_...>::Type>::type;
 };
 
+// Defined later
+template <typename... Types_>
+struct TypeList;
+
 
 template <typename, typename...>
 struct TypeListContains;
@@ -99,13 +103,25 @@ template <typename TypeList_, typename Predicate_>
 struct TypeListIndicesMatching<TypeList_, Predicate_> { using List = IndexList<>; };
 
 template <typename TypeList_, typename Predicate_, typename Head_, typename... Tail_>
-struct TypeListIndicesMatching <TypeList_, Predicate_, Head_, Tail_...>
+struct TypeListIndicesMatching<TypeList_, Predicate_, Head_, Tail_...>
 {
     using List = typename TypeListIndicesMatching<Predicate_, Tail_...>::List
                  ::template AppendedIf<Predicate_::template satisfied<Head_>(),
                                        TypeList_::template index_of<Head_>()>;
 };
 
+template <typename...>
+struct TypeListFilter;
+
+template <typename Predicate_>
+struct TypeListFilter<Predicate_> { using List = TypeList<>; };
+
+template <typename Predicate_, typename Head_, typename... Tail_>
+struct TypeListFilter<Predicate_, Head_, Tail_...>
+{
+    using List = typename TypeListFilter<Predicate_, Tail_...>::List
+                 ::template AppendedIf<Predicate_::template satisfied<Head_>(), Head_>;
+};
 
 // Simple type list for storing raw user-defined types.
 
@@ -114,16 +130,25 @@ struct TypeList
 {
     using This = TypeList<Types_...>;
 
+    template <bool Cond_, typename Tail_>
+    using AppendedIf = typename std::conditional<Cond_, TypeList<Types_..., Tail_>,
+                                                        TypeList<Types_...>>::type;
     template <typename T_>
     static constexpr bool contains() { return TypeListContains<T_, Types_...>::value; }
-
-    template <typename T_>
-    static constexpr int index_of() { return IndexOf<T_, Types_...>::value; }
 
     static constexpr std::size_t size() { return sizeof...(Types_); }
 
     template <typename Predicate_>
     static constexpr std::size_t count_if() { return TypeListCountIf<Predicate_, Types_...>::value; }
+
+    template <typename T_>
+    static constexpr int index_of() { return IndexOf<T_, Types_...>::value; }
+
+    template <typename Predicate_>
+    static constexpr auto filter() -> typename TypeListFilter<Predicate_, Types_...>::List
+    {
+        return typename TypeListFilter<Predicate_, Types_...>::List{};
+    }
 
     template <typename Predicate_>
     static constexpr auto matching_indices() -> typename TypeListIndicesMatching<This, Predicate_, Types_...>::List

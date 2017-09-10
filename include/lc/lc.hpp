@@ -632,22 +632,16 @@ private:
 };
 
 
-template <unsigned Id_>
+template <ApiId Id_>
 struct UniqueId {};
 
-template <unsigned Id_>
-auto make_api(const char* name, UniqueId<Id_>) -> Api<Id_>
+template <ApiId Id_ = 0>
+auto make_api(const char* name, UniqueId<Id_> = UniqueId<Id_>{}) -> Api<Id_>
 {
     return Api<Id_>(name);
 }
 
-template <unsigned Id_>
-auto make_api(const char* name) -> Api<Id_>
-{
-    return Api<Id_>(name);
-}
-
-template <unsigned Id_>
+template <ApiId Id_>
 auto id() -> UniqueId<Id_>
 {
     return UniqueId<Id_>{};
