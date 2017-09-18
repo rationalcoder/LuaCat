@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <cstdlib>
 #include <lc/lc.hpp>
 
 using namespace std;
@@ -26,6 +27,7 @@ enum class TestEnum2
     TWO,
     THREE,
 };
+
 
 int main()
 {

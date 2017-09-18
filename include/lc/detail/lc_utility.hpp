@@ -144,6 +144,9 @@ struct TypeList
     template <typename T_>
     static constexpr int index_of() { return IndexOf<T_, Types_...>::value; }
 
+    template <typename T_, typename Predicate_>
+    static constexpr int index_of_where() { return filter<Predicate_>().template index_of<T_>(); }
+
     template <typename Predicate_>
     static constexpr auto filter() -> typename TypeListFilter<Predicate_, Types_...>::List
     {
@@ -156,6 +159,15 @@ struct TypeList
         return typename TypeListIndicesMatching<This, Predicate_, Types_...>::List{};
     }
 };
+
+struct HasMetatable
+{
+    template <typename T_>
+    static constexpr bool satisfied() { return std::is_class<T_>::value; }
+};
+
+template <typename TypeList_, typename T_>
+constexpr int metatable_index() { return TypeList_::template index_of_where<T_, HasMetatable>(); }
 
 template <typename Any_>
 struct TypeDependentFalse : std::false_type {};
