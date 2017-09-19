@@ -74,8 +74,8 @@ public:
 //! Primary template; generates functions to push and extract types from the lua stack.
 //!
 template <typename T_, typename ApiTypeList_, ApiId ApiId_>
-struct StackManager : std::conditional<is_user_type<T_, ApiTypeList_>::value,
-                      UserTypeStackManager<T_, ApiTypeList_, ApiId_>,
+struct StackManager : std::conditional<lc::detail::is_user_type<T_, ApiTypeList_>::value,
+                      UserTypeStackManager<typename lc::detail::unqualified_type<T_>::type, ApiTypeList_, ApiId_>,
                       UknownTypeStackManager<T_>>::type {};
 
 //! Current representation of objects.
@@ -98,8 +98,11 @@ inline char const* function_name(lua_State* L)
     return debug.name;
 }
 
+template <std::size_t... Types_>
+struct InIndexList { static constexpr bool result(TypeId) { return false; } };
+
 template <std::size_t Head_, std::size_t... Tail_>
-struct InIndexList
+struct InIndexList<Head_, Tail_...>
 {
     static constexpr LC_FORCE_INLINE bool result(TypeId id)
     {

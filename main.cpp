@@ -6,11 +6,17 @@ using namespace std;
 
 class Factory;
 
+struct Bar
+{
+    int one = 1;
+    int two = 2;
+};
+
 struct Foo
 {
-    void test(int, int, int, int, int)
+    void test(Bar* p, int, int, int, int)
     {
-        printf("Got here\n");
+        printf("Got here: %d, %d\n", p->one, p->two);
     }
 };
 
@@ -33,14 +39,17 @@ int main()
 {
     auto api = lc::make_api("TestApi");
     auto& types = api.set_types(lc::Class<Foo, lc::HeapFactory<Foo>>("Foo"),
+                                lc::Class<Bar, lc::HeapFactory<Bar>>("Bar"),
                                 lc::Enum<TestEnum1>("TestEnum1"),
                                 lc::Enum<TestEnum2>("TestEnum2"));
     auto& foo = types.at<Foo>();
-
     foo.set_constructor(lc::Constructor<>());
     foo.add_methods(
         LC_METHOD("test", &Foo::test)
     );
+
+    auto& bar = types.at<Bar>();
+    bar.set_constructor(lc::Constructor<>());
 
     auto& testEnum = types.at<TestEnum1>();
 

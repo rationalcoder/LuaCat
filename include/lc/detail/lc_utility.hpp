@@ -105,7 +105,7 @@ struct TypeListIndicesMatching<TypeList_, Predicate_> { using List = IndexList<>
 template <typename TypeList_, typename Predicate_, typename Head_, typename... Tail_>
 struct TypeListIndicesMatching<TypeList_, Predicate_, Head_, Tail_...>
 {
-    using List = typename TypeListIndicesMatching<Predicate_, Tail_...>::List
+    using List = typename TypeListIndicesMatching<TypeList_, Predicate_, Tail_...>::List
                  ::template AppendedIf<Predicate_::template satisfied<Head_>(),
                                        TypeList_::template index_of<Head_>()>;
 };

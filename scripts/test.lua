@@ -1,3 +1,5 @@
 local Foo = TestApi.Foo
+local Bar = TestApi.Bar
 local foo = Foo()
-foo:test(1, 2, 3, 4, 5)
+local bar = Bar()
+foo:test(bar, 1, 2, 3, 4)
