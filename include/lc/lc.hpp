@@ -6,6 +6,19 @@
 #include <lc/detail/lc_stack.hpp>
 
 #define LC_METHOD(name, ptr) lc::Method<decltype(ptr), ptr>(name)
+// @Temporary until we replace vector?
+#define LC_EXPAND_EMPLACE(vec, ...)\
+do {\
+    using Expand = int[];\
+    Expand{(vec.emplace_back(__VA_ARGS__), 0)...};\
+} while (false)
+
+#define LC_EXPAND_PUSH_BACK(vec, expr)\
+do {\
+    using Expand = int[];\
+    Expand{(vec.push_back(expr), 0)...};\
+} while (false)
+
 
 namespace lc
 {
@@ -148,12 +161,12 @@ public:
     static void export_to(lua_State* L, char const* name, lua_Integer* classMetatables)
     {
         using Wrapper = decltype(detail::make_call_wrapper<ApiId_, TypeId_, TypeSet_>(Pointer_));
-        using Result = typename Wrapper::Result;
+        using Result = typename lc::detail::unqualified_type<typename Wrapper::Result>::type;
         // TODO: static_assert result is a pointer to an API type if result is not a value.
 
         // If the type doesn't have a metatable, just push and set the function as usual
         // in the table on top of the stack. This is expected to be resolved at compile-time.
-        if (!lc::detail::HasMetatable::satisfied<Result>()) {
+        if (!lc::detail::HasMetatable<Result>::value) {
             lua_pushcfunction(L, &Wrapper::template call<Pointer_>);
             lua_setfield(L, -2, name);
             return;
@@ -185,7 +198,7 @@ struct Constructor {};
 using DefaultConstructor = Constructor<>;
 
 template <class Type_,
-          class Factory_>
+          class Factory_ = lc::HeapFactory<Type_>>
 class Class
 {
 public:
@@ -222,11 +235,30 @@ private:
     char const* name_;
 };
 
-template <typename T_>
-struct EnumValue
+namespace detail
 {
-    char const* name;
-    T_ value;
+struct RawEnumValue 
+{
+    char const* name = nullptr; 
+    lua_Integer value = 0;
+
+    RawEnumValue() {}
+    RawEnumValue(char const* name, lua_Integer value)
+        : name(name), value(value)
+    {}
+};
+} // namespace detail
+
+// @Note: the cake is a lie. T_ is just for type-safety
+// at call sites. We have to store lua_Integer's anyway,
+// so it doesn't matter.
+template <typename T_>
+struct EnumValue : lc::detail::RawEnumValue
+{
+    EnumValue() {}
+    EnumValue(char const* name, T_ value)
+        : RawEnumValue(name, (lua_Integer)value)
+    {}
 };
 
 
@@ -253,6 +285,7 @@ class TypeExporter
     "\n\n(LC): No TypeExporter specialization found for that type wrapper. Check your call to lc::Api::set_types(). \n\n");
 };
 
+//! Type exporter for classes.
 template <ApiId ApiId_,
           TypeId TypeId_,
           typename Type_,
@@ -307,18 +340,19 @@ private:
         template <std::size_t... Indices_>
         static int call_metamethod_impl(lua_State* L, detail::IndexSequence<Indices_...>)
         {
+            using Contents = lc::detail::UserDataContents;
             size_t numArgs = lua_gettop(L);
             if (numArgs != sizeof...(Args_) + 1) luaL_error(L, "In constructor for type '%s': expected %d arguments, got %d",
                                                             detail::function_name(L), sizeof...(Args_), numArgs-1);
             Type* instance = Factory::make(detail::StackManager<Args_, TypeSet_, ApiId_>::template at<Indices_ + 2>(L)...);
             if (!instance) return luaL_error(L, "Failed to allocate object(API ID: %u, Type ID: %u).", api_id(), type_id());
 
-            detail::UserDataContents contents;
+            Contents contents;
             contents.apiId = api_id();
             contents.typeId = type_id();
             contents.instance = instance;
 
-            detail::UserDataContents* uData = (detail::UserDataContents*)lua_newuserdata(L, sizeof(contents));
+            Contents* uData = (Contents*)lua_newuserdata(L, sizeof(contents));
             *uData = contents;
 
             // [1]: class table
@@ -343,7 +377,8 @@ private:
 
         static int gc_metamethod(lua_State* L)
         {
-            detail::UserDataContents* contents = (detail::UserDataContents*)lua_touserdata(L, -1);
+            using Contents = lc::detail::UserDataContents;
+            Contents* contents = (Contents*)lua_touserdata(L, -1);
             Factory_::free((Type*)contents->instance);
             return 0;
         }
@@ -376,10 +411,8 @@ public:
     void add_methods(Methods_... methods)
     {
         methodExportPairs_.reserve(sizeof...(Methods_));
-
-        using Expand = int[];
-        Expand{(methodExportPairs_.emplace_back(methods.name(),
-                methods.template export_to<ApiId_, TypeId_, TypeSet_>), 0)...};
+        LC_EXPAND_EMPLACE(methodExportPairs_, methods.name(),
+                          methods.template export_to<ApiId_, TypeId_, TypeSet_>);
     }
 
     // During this phase, we are responsible for exporting our type to the lua state
@@ -439,12 +472,13 @@ private:
     mutable lua_Integer methodsTable_;
 };
 
+//! Type exporter for enums.
 template <ApiId ApiId_,
           TypeId TypeId_,
           typename Type_,
           typename Factory_,
           typename TypeSet_>
-class TypeExporter<ApiId_, TypeId_, Type_, Factory_, TypeSet_, lc::Enum<Type_, Factory_>>
+class TypeExporter<ApiId_, TypeId_, Type_, Factory_, TypeSet_, lc::Enum<Type_, Factory_>> 
 {
 public:
     using Type = Type_;
@@ -462,28 +496,47 @@ public:
     char const* name() const { return name_; }
 
     template <typename... EnumValues_>
-    void add_values(EnumValues_...)
+    void add_values(EnumValues_... values) 
     {
+        LC_EXPAND_PUSH_BACK(values_, (lc::detail::RawEnumValue)values);
     }
 
-    void export_meta(lua_State*, lua_Integer*) const
+    void export_meta(lua_State*, lua_Integer*) const {}
+    void export_other(lua_State* L, lua_Integer*) const
     {
-    }
+        printf("exporting: %d\n", lua_gettop(L));
+        // No point in exporting if there aren't any values...
+        if (values_.empty()) return;
 
-    void export_other(lua_State*, lua_Integer*) const
-    {
+        // [1]: API table
+        lua_newtable(L); // enum class table
+        for (const lc::detail::RawEnumValue& v : values_) {
+            using Contents = lc::detail::EnumClassContents;
+
+            // @Space. This is a wasteful implementation. This way, each stores
+            // an api id and type id, when they could all reference the same ones.
+            Contents* contents = (Contents*)lua_newuserdata(L, sizeof(Contents));
+            contents->apiId = ApiId_;
+            contents->typeId = TypeId_;
+            contents->value = (lua_Integer)v.value;
+            lua_setfield(L, -2, v.name);
+        }
+        lua_setfield(L, -2, name_);
+        printf("done: %d\n", lua_gettop(L));
     }
 
 private:
     char const* name_;
+    std::vector<lc::detail::RawEnumValue> values_;
 };
 
 
 namespace detail
 {
 
-// Hurts to make a virtual base, but it's easy and one virtual call
-// during an export isn't going to hurt anyone.
+// @Ugly/@Temporary: Hurts to make a virtual base, but it's easy and one virtual call,
+// during an export (assuming it doesn't get devirtualized) isn't going to 
+// hurt anyone.
 class ExporterSetBase
 {
 public:
@@ -532,12 +585,6 @@ struct ExporterCaller<0>
 
 } // namespace detail
 
-struct HasMetatable
-{
-    template <typename T_>
-    static constexpr bool satisfied() { return std::is_class<T_>::value; }
-};
-
 template <typename... TypeExporters_>
 class ExporterSet final : public detail::ExporterSetBase
 {
@@ -545,7 +592,6 @@ private:
     template <typename Type_>
     using ExporterFor = typename detail::TypeFinder<Type_, TypeExporters_...>::Type;
     using TypeSet = detail::TypeList<typename TypeExporters_::Type...>;
-
 
 public:
     ExporterSet(std::tuple<TypeExporters_...>&& exporters)
@@ -565,7 +611,10 @@ public:
         return std::get<ExporterFor<Type_>::type_id()>(exporters_);
     }
 
-    virtual void export_to(lua_State* L)
+    
+    // Use as many C++11 annotations as possible to try to get the compiler
+    // to devirtualize this into the sane thing.
+    virtual void export_to(lua_State* L) final override
     {
         // There are two phases, "meta" and "other" so that all types exporters
         // can register their type names, metatables, etc. somewhere in the lua_State
@@ -577,7 +626,7 @@ public:
 
 private:
     std::tuple<TypeExporters_...> exporters_;
-    lua_Integer metatables_[TypeSet::template filter<HasMetatable>().size()];
+    lua_Integer metatables_[TypeSet::template filter<lc::detail::HasMetatable>().size()];
 };
 
 
@@ -608,6 +657,7 @@ public:
                                                                       detail::TypeList<typename Wrappers_::Type...>,
                                                                       Wrappers_>...>&
     {
+        // @BugProne
         delete exporterSet_;
 
         auto exporterTuple = std::make_tuple(TypeExporter<ApiId_, detail::IndexOf<Wrappers_, Wrappers_...>::value,

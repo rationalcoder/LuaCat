@@ -89,6 +89,13 @@ struct UserDataContents
     ApiId apiId = 0;
 };
 
+struct EnumClassContents
+{
+    lua_Integer value = 0;
+    TypeId typeId = 0;
+    ApiId apiId = 0;
+};
+
 inline char const* function_name(lua_State* L)
 {
     lua_Debug debug;
@@ -118,7 +125,7 @@ struct InIndexList<Head_>
 
 
 template <typename T_, typename ApiTypeList_, ApiId ApiId_>
-class UserTypeStackManager
+class ClassStackManager
 {
 private:
     static constexpr TypeId type_id() { return ApiTypeList_::template index_of<T_>(); }
@@ -142,7 +149,7 @@ public:
     static LC_FORCE_INLINE T_* at(lua_State* L)
     {
         UserDataContents* contents = (UserDataContents*)lua_touserdata(L, Index_);
-        if (contents == nullptr) luaL_argerror(L, Index_, "userdata expected");
+        if (contents == nullptr) luaL_argerror(L, Index_, "class instance expected");
         if (contents->apiId != ApiId_) luaL_argerror(L, Index_, "type isn't from this API");
 
         TypeId typeId = contents->typeId;
@@ -152,11 +159,8 @@ public:
     }
 
 private:
-    struct IsDerived
-    {
-        template <typename PossiblyDerived_>
-        static constexpr bool satisfied() { return std::is_base_of<T_, PossiblyDerived_>::value; }
-    };
+    template <typename PossiblyDerived_>
+    struct IsDerived : std::is_base_of<T_, PossiblyDerived_> {};
 
     // The idea here is to generate an if statement like if (id == 0 || id == 5 || etc.)
 
@@ -173,6 +177,43 @@ private:
         return InIndexList<Indices_...>::result(id);
     }
 };
+
+
+template <typename T_, typename ApiTypeList_, ApiId ApiId_>
+class EnumClassStackManager
+{
+private:
+    static constexpr TypeId type_id() { return ApiTypeList_::template index_of<T_>(); }
+
+public:
+    static LC_FORCE_INLINE int push(lua_State* L, T_ val)
+    {
+        EnumClassContents* contents = (EnumClassContents*)lua_newuserdata(L, sizeof(EnumClassContents));
+        contents->apiId = ApiId_;
+        contents->typeId = type_id();
+        contents->value = (lua_Integer)val;
+
+        return 1;
+    }
+    template <std::size_t Index_>
+    static LC_FORCE_INLINE T_ at(lua_State* L)
+    {
+        EnumClassContents* contents = (EnumClassContents*)lua_touserdata(L, Index_);
+        if (contents == nullptr) luaL_argerror(L, Index_, "enum class expected");
+        if (contents->apiId != ApiId_) luaL_argerror(L, Index_, "type isn't from this API");
+        if (contents->typeId != type_id()) luaL_argerror(L, Index_, "wrong type");
+
+        return (T_)contents->value;
+    }
+};
+
+// Switch implementations based on whether we are dealing with a regular class
+// or an enum class. @Note, regular enums are just lua_Integers.
+template <typename T_, typename ApiTypeList_, ApiId ApiId_>
+struct UserTypeStackManager : std::conditional<std::is_class<T_>::value,
+                                   ClassStackManager<T_, ApiTypeList_, ApiId_>,
+                                   EnumClassStackManager<T_, ApiTypeList_, ApiId_>
+                                   >::type {};
 
 //! The implementation of any stack manager that works on signed integers.
 //!
@@ -254,20 +295,30 @@ struct StackManager<bool, ApiTypeList_, ApiId_>
 };
 
 // Real number managers
-template <typename ApiTypeList_, ApiId ApiId_> struct StackManager<double, ApiTypeList_, ApiId_> : RealNumberManager<double> {};
-template <typename ApiTypeList_, ApiId ApiId_> struct StackManager<float, ApiTypeList_, ApiId_> : RealNumberManager<float> {};
+template <typename ApiTypeList_, ApiId ApiId_> 
+struct StackManager<double, ApiTypeList_, ApiId_> : RealNumberManager<double> {};
+template <typename ApiTypeList_, ApiId ApiId_> 
+struct StackManager<float, ApiTypeList_, ApiId_> : RealNumberManager<float> {};
 
 // Signed int managers
-template <typename ApiTypeList_, ApiId ApiId_> struct StackManager<int8_t, ApiTypeList_, ApiId_> : SignedIntegerManager<int8_t> {};
-template <typename ApiTypeList_, ApiId ApiId_> struct StackManager<int16_t, ApiTypeList_, ApiId_> : SignedIntegerManager<int16_t> {};
-template <typename ApiTypeList_, ApiId ApiId_> struct StackManager<int32_t, ApiTypeList_, ApiId_> : SignedIntegerManager<int32_t> {};
-template <typename ApiTypeList_, ApiId ApiId_> struct StackManager<int64_t, ApiTypeList_, ApiId_> : SignedIntegerManager<int64_t> {};
+template <typename ApiTypeList_, ApiId ApiId_> 
+struct StackManager<int8_t, ApiTypeList_, ApiId_> : SignedIntegerManager<int8_t> {};
+template <typename ApiTypeList_, ApiId ApiId_> 
+struct StackManager<int16_t, ApiTypeList_, ApiId_> : SignedIntegerManager<int16_t> {};
+template <typename ApiTypeList_, ApiId ApiId_> 
+struct StackManager<int32_t, ApiTypeList_, ApiId_> : SignedIntegerManager<int32_t> {};
+template <typename ApiTypeList_, ApiId ApiId_> 
+struct StackManager<int64_t, ApiTypeList_, ApiId_> : SignedIntegerManager<int64_t> {};
 
 // Unsigned int managers
-template <typename ApiTypeList_, ApiId ApiId_> struct StackManager<uint8_t, ApiTypeList_, ApiId_> : UnsignedIntegerManager<uint8_t> {};
-template <typename ApiTypeList_, ApiId ApiId_> struct StackManager<uint16_t, ApiTypeList_, ApiId_> : UnsignedIntegerManager<uint16_t> {};
-template <typename ApiTypeList_, ApiId ApiId_> struct StackManager<uint32_t, ApiTypeList_, ApiId_> : UnsignedIntegerManager<uint32_t> {};
-template <typename ApiTypeList_, ApiId ApiId_> struct StackManager<uint64_t, ApiTypeList_, ApiId_> : UnsignedIntegerManager<uint64_t> {};
+template <typename ApiTypeList_, ApiId ApiId_> 
+struct StackManager<uint8_t, ApiTypeList_, ApiId_> : UnsignedIntegerManager<uint8_t> {};
+template <typename ApiTypeList_, ApiId ApiId_> 
+struct StackManager<uint16_t, ApiTypeList_, ApiId_> : UnsignedIntegerManager<uint16_t> {};
+template <typename ApiTypeList_, ApiId ApiId_> 
+struct StackManager<uint32_t, ApiTypeList_, ApiId_> : UnsignedIntegerManager<uint32_t> {};
+template <typename ApiTypeList_, ApiId ApiId_> 
+struct StackManager<uint64_t, ApiTypeList_, ApiId_> : UnsignedIntegerManager<uint64_t> {};
 
 } // end detail
 } // end lc

@@ -74,15 +74,15 @@ struct TypeListContains<Target_, Head_, Tail_...> : std::conditional<std::is_sam
                                                                      std::true_type,
                                                                      TypeListContains<Head_, Tail_...>>::type {};
 
-template <typename, typename...>
+template <template <typename> class, typename...>
 struct TypeListCountIf;
 
-template <typename Predicate_>
+template <template <typename> class Predicate_>
 struct TypeListCountIf<Predicate_> : std::integral_constant<std::size_t, 0> {};
 
-template <typename Predicate_, typename Head_, typename... Tail_>
+template <template <typename> class Predicate_, typename Head_, typename... Tail_>
 struct TypeListCountIf<Predicate_, Head_, Tail_...> :
-        std::integral_constant<std::size_t, (std::size_t)Predicate_::template satisfied<Head_>()
+        std::integral_constant<std::size_t, (std::size_t)Predicate_<Head_>::value
                                             + TypeListCountIf<Predicate_, Tail_...>::value> {};
 
 
@@ -96,31 +96,31 @@ struct IndexList
                                                         IndexList<Indices_...>>::type;
 };
 
-template <typename, typename...>
+template <typename, template <typename> class, typename...>
 struct TypeListIndicesMatching;
 
-template <typename TypeList_, typename Predicate_>
+template <typename TypeList_, template <typename> class Predicate_>
 struct TypeListIndicesMatching<TypeList_, Predicate_> { using List = IndexList<>; };
 
-template <typename TypeList_, typename Predicate_, typename Head_, typename... Tail_>
+template <typename TypeList_, template <typename> class Predicate_, typename Head_, typename... Tail_>
 struct TypeListIndicesMatching<TypeList_, Predicate_, Head_, Tail_...>
 {
     using List = typename TypeListIndicesMatching<TypeList_, Predicate_, Tail_...>::List
-                 ::template AppendedIf<Predicate_::template satisfied<Head_>(),
+                 ::template AppendedIf<Predicate_<Head_>::value,
                                        TypeList_::template index_of<Head_>()>;
 };
 
-template <typename...>
+template <template <typename> class, typename...>
 struct TypeListFilter;
 
-template <typename Predicate_>
+template <template <typename> class Predicate_>
 struct TypeListFilter<Predicate_> { using List = TypeList<>; };
 
-template <typename Predicate_, typename Head_, typename... Tail_>
+template <template <typename> class Predicate_, typename Head_, typename... Tail_>
 struct TypeListFilter<Predicate_, Head_, Tail_...>
 {
     using List = typename TypeListFilter<Predicate_, Tail_...>::List
-                 ::template AppendedIf<Predicate_::template satisfied<Head_>(), Head_>;
+                 ::template AppendedIf<Predicate_<Head_>::value, Head_>;
 };
 
 // Simple type list for storing raw user-defined types.
@@ -138,33 +138,30 @@ struct TypeList
 
     static constexpr std::size_t size() { return sizeof...(Types_); }
 
-    template <typename Predicate_>
+    template <template <typename> class Predicate_>
     static constexpr std::size_t count_if() { return TypeListCountIf<Predicate_, Types_...>::value; }
 
     template <typename T_>
     static constexpr int index_of() { return IndexOf<T_, Types_...>::value; }
 
-    template <typename T_, typename Predicate_>
+    template <typename T_, template <typename> class Predicate_>
     static constexpr int index_of_where() { return filter<Predicate_>().template index_of<T_>(); }
 
-    template <typename Predicate_>
+    template <template <typename> class Predicate_>
     static constexpr auto filter() -> typename TypeListFilter<Predicate_, Types_...>::List
     {
         return typename TypeListFilter<Predicate_, Types_...>::List{};
     }
 
-    template <typename Predicate_>
+    template <template<typename> class Predicate_>
     static constexpr auto matching_indices() -> typename TypeListIndicesMatching<This, Predicate_, Types_...>::List
     {
         return typename TypeListIndicesMatching<This, Predicate_, Types_...>::List{};
     }
 };
 
-struct HasMetatable
-{
-    template <typename T_>
-    static constexpr bool satisfied() { return std::is_class<T_>::value; }
-};
+template <typename T_>
+struct HasMetatable : std::integral_constant<bool, std::is_class<T_>::value> {};
 
 template <typename TypeList_, typename T_>
 constexpr int metatable_index() { return TypeList_::template index_of_where<T_, HasMetatable>(); }
