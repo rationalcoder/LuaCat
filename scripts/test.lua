@@ -5,4 +5,4 @@ local bar = Bar()
 local b = foo:make_bar(bar, 1, 2, 3, 4)
 
 local TestEnum1 = TestApi.TestEnum1
-foo:test_enum(1)
+foo:test_enum(TestEnum1.ONE)

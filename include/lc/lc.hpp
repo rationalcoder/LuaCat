@@ -504,7 +504,6 @@ public:
     void export_meta(lua_State*, lua_Integer*) const {}
     void export_other(lua_State* L, lua_Integer*) const
     {
-        printf("exporting: %d\n", lua_gettop(L));
         // No point in exporting if there aren't any values...
         if (values_.empty()) return;
 
@@ -513,7 +512,7 @@ public:
         for (const lc::detail::RawEnumValue& v : values_) {
             using Contents = lc::detail::EnumClassContents;
 
-            // @Space. This is a wasteful implementation. This way, each stores
+            // @Space, @Slow. This is a wasteful implementation. This way, each stores
             // an api id and type id, when they could all reference the same ones.
             Contents* contents = (Contents*)lua_newuserdata(L, sizeof(Contents));
             contents->apiId = ApiId_;
@@ -522,29 +521,12 @@ public:
             lua_setfield(L, -2, v.name);
         }
         lua_setfield(L, -2, name_);
-        printf("done: %d\n", lua_gettop(L));
     }
 
 private:
     char const* name_;
     std::vector<lc::detail::RawEnumValue> values_;
 };
-
-
-namespace detail
-{
-
-// @Ugly/@Temporary: Hurts to make a virtual base, but it's easy and one virtual call,
-// during an export (assuming it doesn't get devirtualized) isn't going to 
-// hurt anyone.
-class ExporterSetBase
-{
-public:
-    virtual void export_to(lua_State* L) = 0;
-    virtual ~ExporterSetBase() {}
-};
-
-} // namespace detail
 
 namespace detail
 {
@@ -583,10 +565,46 @@ struct ExporterCaller<0>
     }
 };
 
+struct ExporterSetWrapper
+{
+    void* exporterSet = nullptr;
+    void (*exportFunc)(void*, lua_State*) = nullptr;
+    void (*free)(void*) = nullptr;
+    void export_to(lua_State* L) { exportFunc(exporterSet, L); }
+
+    void delete_and_null()
+    {
+        if (exporterSet) {
+            free(exporterSet);
+            exporterSet = nullptr;
+        }
+    }
+};
+
+template <typename T_>
+struct ExporterSetWrapperFactory
+{
+    static void export_to(void* p, lua_State* L) { ((T_*)p)->export_to(L); }
+    static void free(void* p) { delete ((T_*)p); }
+};
+
+template <typename T_>
+static lc::detail::ExporterSetWrapper wrap_exporter_set(T_* exporterSet)
+{
+    using Wrapper = lc::detail::ExporterSetWrapper;
+    using Factory = lc::detail::ExporterSetWrapperFactory<T_>;
+
+    Wrapper result;
+    result.exporterSet = exporterSet;
+    result.exportFunc = &Factory::export_to;
+    result.free = &Factory::free;
+    return result;
+}
+
 } // namespace detail
 
 template <typename... TypeExporters_>
-class ExporterSet final : public detail::ExporterSetBase
+class ExporterSet
 {
 private:
     template <typename Type_>
@@ -611,10 +629,7 @@ public:
         return std::get<ExporterFor<Type_>::type_id()>(exporters_);
     }
 
-    
-    // Use as many C++11 annotations as possible to try to get the compiler
-    // to devirtualize this into the sane thing.
-    virtual void export_to(lua_State* L) final override
+    void export_to(lua_State* L)
     {
         // There are two phases, "meta" and "other" so that all types exporters
         // can register their type names, metatables, etc. somewhere in the lua_State
@@ -629,19 +644,17 @@ private:
     lua_Integer metatables_[TypeSet::template filter<lc::detail::HasMetatable>().size()];
 };
 
-
 template <ApiId ApiId_>
 class Api
 {
 public:
     explicit Api(char const* name)
-        : name_(name), exporterSet_(nullptr)
+        : name_(name)
     {}
 
     ~Api()
     {
-        delete exporterSet_;
-        exporterSet_ = nullptr;
+        exporterSet_.delete_and_null();
     }
 
     Api(const Api&) = delete;
@@ -657,8 +670,7 @@ public:
                                                                       detail::TypeList<typename Wrappers_::Type...>,
                                                                       Wrappers_>...>&
     {
-        // @BugProne
-        delete exporterSet_;
+        exporterSet_.delete_and_null();
 
         auto exporterTuple = std::make_tuple(TypeExporter<ApiId_, detail::IndexOf<Wrappers_, Wrappers_...>::value,
                                                           typename Wrappers_::Type,
@@ -666,13 +678,13 @@ public:
                                                           detail::TypeList<typename Wrappers_::Type...>,
                                                           Wrappers_>(wrappers.name())...);
 
-        // This hurts, but it is necessary unless there is a substantial refactoring.
         auto* temp = new ExporterSet<TypeExporter<ApiId_, detail::IndexOf<Wrappers_, Wrappers_...>::value,
                                       typename Wrappers_::Type,
                                       typename Wrappers_::Factory,
                                       detail::TypeList<typename Wrappers_::Type...>,
                                       Wrappers_>...>(std::move(exporterTuple));
-        exporterSet_ = temp;
+
+        exporterSet_ = lc::detail::wrap_exporter_set(temp);
         return *temp;
     }
 
@@ -682,19 +694,19 @@ public:
         bool named = name_ && *name_;
         if (named) {
             lua_newtable(L);
-            exporterSet_->export_to(L);
+            exporterSet_.export_to(L);
             lua_setglobal(L, name_);
         }
         else {
             lua_pushglobaltable(L);
-            exporterSet_->export_to(L);
+            exporterSet_.export_to(L);
             lua_pop(L, 1);
         }
     }
 
 private:
     char const* name_;
-    detail::ExporterSetBase* exporterSet_;
+    lc::detail::ExporterSetWrapper exporterSet_;
 };
 
 

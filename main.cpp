@@ -30,7 +30,7 @@ struct Foo
 {
     Bar* make_bar(Bar* p, int, int, int, int)
     {
-        printf("%s\n", __PRETTY_FUNCTION__);
+        printf("%s(): %p\n", __func__, p);
         return lc::HeapFactory<Bar>::make();
     }
 

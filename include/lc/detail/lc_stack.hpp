@@ -40,7 +40,7 @@ struct is_user_type : std::conditional<ApiTypeList_::template contains<typename 
                                        std::true_type>::type {};
 
 template <typename T_, typename ApiTypeList_, ApiId ApiId_>
-class UserTypeStackManager;
+struct UserTypeStackManager;
 
 //! StackManager base for types that aren't valid user types for whatever reason.
 //! This also serves as a good place to document the two functions that define a StackManager,
